@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 
 from .database import Base, SessionLocal, engine
 from .routers import admin, auth, chat, conversations, endpoints, uploads, wecom_bot
+from .routers import mcp as mcp_router
+from .routers import skills as skills_router
 from .security import hash_password
 
 Base.metadata.create_all(bind=engine)
@@ -113,6 +115,28 @@ def _ensure_columns() -> None:
                 conn.execute(
                     text("ALTER TABLE conversations ADD COLUMN bot_id INTEGER")
                 )
+        if "mcp_ids" not in ccols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE conversations ADD COLUMN mcp_ids VARCHAR DEFAULT ''")
+                )
+        if "skill_ids" not in ccols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE conversations ADD COLUMN skill_ids VARCHAR DEFAULT ''")
+                )
+    if "wecom_bots" in insp.get_table_names():
+        bcols = {c["name"] for c in insp.get_columns("wecom_bots")}
+        if "mcp_ids" not in bcols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE wecom_bots ADD COLUMN mcp_ids VARCHAR DEFAULT ''")
+                )
+        if "skill_ids" not in bcols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE wecom_bots ADD COLUMN skill_ids VARCHAR DEFAULT ''")
+                )
 
 
 _ensure_columns()
@@ -151,6 +175,8 @@ app.include_router(uploads.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(endpoints.router, prefix="/api")
 app.include_router(wecom_bot.router, prefix="/api")
+app.include_router(mcp_router.router, prefix="/api")
+app.include_router(skills_router.router, prefix="/api")
 
 
 @app.get("/api/health")

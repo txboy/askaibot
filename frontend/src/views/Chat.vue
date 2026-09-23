@@ -7,8 +7,11 @@ import AttachmentImage from '../components/AttachmentImage.vue'
 import MarkdownContent from '../components/MarkdownContent.vue'
 import Logo from '../components/Logo.vue'
 import ProfileModal from '../components/ProfileModal.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import { useConfirm } from '../composables/useConfirm'
 
 const router = useRouter()
+const confirmDlg = useConfirm()
 
 const conversations = ref([])
 const currentConversation = ref(null)
@@ -38,6 +41,68 @@ const webSearch = ref(false)
 const knowledgeBases = ref([])
 const selectedKnowledgeBaseId = ref(null)
 const kbPickerOpen = ref(false)
+
+const mcpServers = ref([])
+const selectedMcpIds = ref([])
+const mcpPickerOpen = ref(false)
+
+function parseMcpIds(s) {
+  return (s || '')
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .map(Number)
+}
+
+function toggleMcp(server) {
+  const i = selectedMcpIds.value.indexOf(server.id)
+  if (i === -1) selectedMcpIds.value.push(server.id)
+  else selectedMcpIds.value.splice(i, 1)
+  persistMcpSelection()
+}
+
+function persistMcpSelection() {
+  const conv = currentConversation.value
+  if (!conv) return
+  conv.mcp_ids = selectedMcpIds.value.join(',')
+  api.updateConversationMcp(conv.id, conv.mcp_ids).catch(() => {})
+}
+
+function clearMcpSelection() {
+  selectedMcpIds.value = []
+  persistMcpSelection()
+}
+
+const skills = ref([])
+const selectedSkillIds = ref([])
+const skillPickerOpen = ref(false)
+
+function parseSkillIds(s) {
+  return (s || '')
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .map(Number)
+}
+
+function toggleSkill(skill) {
+  const i = selectedSkillIds.value.indexOf(skill.id)
+  if (i === -1) selectedSkillIds.value.push(skill.id)
+  else selectedSkillIds.value.splice(i, 1)
+  persistSkillSelection()
+}
+
+function persistSkillSelection() {
+  const conv = currentConversation.value
+  if (!conv) return
+  conv.skill_ids = selectedSkillIds.value.join(',')
+  api.updateConversationSkills(conv.id, conv.skill_ids).catch(() => {})
+}
+
+function clearSkillSelection() {
+  selectedSkillIds.value = []
+  persistSkillSelection()
+}
 
 const avatarSrc = computed(() => {
   const u = me()
@@ -115,6 +180,16 @@ onMounted(async () => {
     knowledgeBases.value = []
   }
   try {
+    mcpServers.value = await api.mcpServers()
+  } catch {
+    mcpServers.value = []
+  }
+  try {
+    skills.value = await api.skills()
+  } catch {
+    skills.value = []
+  }
+  try {
     const s = await api.getSms()
     smsEnabled.value = !!s.enabled
   } catch {}
@@ -159,6 +234,8 @@ async function loadConversations() {
 async function selectConversation(conv) {
   currentConversation.value = conv
   messages.value = await api.messages(conv.id)
+  selectedMcpIds.value = parseMcpIds(conv.mcp_ids)
+  selectedSkillIds.value = parseSkillIds(conv.skill_ids)
   sidebarOpen.value = false
   scrollToBottom()
 }
@@ -167,12 +244,14 @@ async function newConversation() {
   currentConversation.value = null
   messages.value = []
   input.value = ''
+  selectedMcpIds.value = []
+  selectedSkillIds.value = []
   sidebarOpen.value = false
 }
 
 async function deleteConversation(conv, e) {
   e.stopPropagation()
-  if (!confirm(`删除会话「${conv.title}」？`)) return
+  if (!(await confirmDlg.askConfirm(`删除会话「${conv.title}」？`, { title: '删除会话', danger: true }))) return
   await api.deleteConversation(conv.id)
   conversations.value = conversations.value.filter((c) => c.id !== conv.id)
   if (currentConversation.value?.id === conv.id) {
@@ -228,7 +307,12 @@ async function send() {
 
   let convId = currentConversation.value?.id
   if (!convId) {
-    const conv = await api.createConversation({ title: content.slice(0, 20), model: '' })
+    const conv = await api.createConversation({
+      title: content.slice(0, 20),
+      model: '',
+      mcp_ids: selectedMcpIds.value.join(','),
+      skill_ids: selectedSkillIds.value.join(','),
+    })
     conversations.value.unshift(conv)
     currentConversation.value = conv
     convId = conv.id
@@ -236,7 +320,7 @@ async function send() {
 
   messages.value.push({ role: 'user', content, attachments: [...pendingAttachments.value] })
   pendingAttachments.value = []
-  const assistant = reactive({ role: 'assistant', content: '', streaming: true, searching: false })
+  const assistant = reactive({ role: 'assistant', content: '', streaming: true, searching: false, tooling: false })
   messages.value.push(assistant)
   streaming.value = true
   scrollToBottom()
@@ -252,12 +336,17 @@ async function send() {
       knowledgeBaseId: selectedKnowledgeBaseId.value,
       onDelta: (d) => {
         assistant.searching = false
+        assistant.tooling = false
         assistant.content += d
         scrollToBottom()
       },
       onStatus: (s) => {
         if (s === 'searching') {
           assistant.searching = true
+          scrollToBottom()
+        }
+        if (s === 'tool') {
+          assistant.tooling = true
           scrollToBottom()
         }
       },
@@ -362,6 +451,9 @@ function logout() {
             <div v-if="m.role === 'assistant' && m.searching" class="searching-hint">
               <font-awesome-icon icon="globe" /> 正在联网搜索…
             </div>
+            <div v-if="m.role === 'assistant' && m.tooling" class="searching-hint">
+              <font-awesome-icon icon="plug" /> 正在调用 MCP 工具…
+            </div>
             <div v-if="m.role === 'assistant'" class="msg-content md-body">
               <MarkdownContent :content="m.content" />
             </div>
@@ -413,6 +505,38 @@ function logout() {
               icon="xmark"
               class="kb-clear"
               @click.stop="selectKnowledgeBase(null)"
+            />
+          </button>
+          <button
+            v-if="mcpServers.length"
+            class="web-search-toggle mcp-toggle"
+            :class="{ active: selectedMcpIds.length }"
+            title="选择 MCP 工具"
+            @click="mcpPickerOpen = true"
+          >
+            <font-awesome-icon icon="plug" />
+            <span>{{ selectedMcpIds.length ? `${selectedMcpIds.length} 个MCP` : 'MCP' }}</span>
+            <font-awesome-icon
+              v-if="selectedMcpIds.length"
+              icon="xmark"
+              class="kb-clear"
+              @click.stop="clearMcpSelection"
+            />
+          </button>
+          <button
+            v-if="skills.length"
+            class="web-search-toggle mcp-toggle"
+            :class="{ active: selectedSkillIds.length }"
+            title="选择技能包"
+            @click="skillPickerOpen = true"
+          >
+            <font-awesome-icon icon="wand-magic-sparkles" />
+            <span>{{ selectedSkillIds.length ? `${selectedSkillIds.length} 个技能` : '技能' }}</span>
+            <font-awesome-icon
+              v-if="selectedSkillIds.length"
+              icon="xmark"
+              class="kb-clear"
+              @click.stop="clearSkillSelection"
             />
           </button>
         </div>
@@ -501,11 +625,68 @@ function logout() {
       </div>
     </div>
 
+    <div v-if="mcpPickerOpen" class="modal-mask" @click.self="mcpPickerOpen = false">
+      <div class="modal modal-picker">
+        <div class="picker-head">
+          <span>选择 MCP 工具（可多选）</span>
+          <button class="picker-close" @click="mcpPickerOpen = false">
+            <font-awesome-icon icon="xmark" />
+          </button>
+        </div>
+        <div class="picker-list">
+          <div
+            v-for="s in mcpServers"
+            :key="s.id"
+            class="picker-kb mcp-item"
+            :class="{ active: selectedMcpIds.includes(s.id) }"
+            @click="toggleMcp(s)"
+          >
+            <span>{{ s.name }}</span>
+            <span v-if="s.description" class="picker-kb-desc">{{ s.description }}</span>
+            <span class="mcp-count">{{ s.tool_count || 0 }} 个工具</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="skillPickerOpen" class="modal-mask" @click.self="skillPickerOpen = false">
+      <div class="modal modal-picker">
+        <div class="picker-head">
+          <span>选择技能包（可多选）</span>
+          <button class="picker-close" @click="skillPickerOpen = false">
+            <font-awesome-icon icon="xmark" />
+          </button>
+        </div>
+        <div class="picker-list">
+          <div
+            v-for="sk in skills"
+            :key="sk.id"
+            class="picker-kb mcp-item"
+            :class="{ active: selectedSkillIds.includes(sk.id) }"
+            @click="toggleSkill(sk)"
+          >
+            <span>{{ sk.name }}</span>
+            <span v-if="sk.description" class="picker-kb-desc">{{ sk.description }}</span>
+            <span class="mcp-count">{{ sk.tools?.length || 0 }} 个工具</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <ProfileModal
       v-if="profileOpen && me()"
       :user="me()"
       :sms-enabled="smsEnabled"
       @close="profileOpen = false"
+    />
+
+    <ConfirmDialog
+      :visible="confirmDlg.visible"
+      :title="confirmDlg.title"
+      :message="confirmDlg.message"
+      :danger="confirmDlg.danger"
+      @confirm="confirmDlg.confirm"
+      @cancel="confirmDlg.cancel"
     />
   </div>
 </template>
@@ -964,6 +1145,20 @@ function logout() {
 }
 
 .picker-kb.active .picker-kb-desc {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.mcp-item {
+  align-items: center;
+}
+
+.mcp-item .mcp-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.mcp-item.active .mcp-count {
   color: rgba(255, 255, 255, 0.85);
 }
 

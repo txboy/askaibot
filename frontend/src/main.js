@@ -10,11 +10,13 @@ import {
   faChevronDown,
   faGlobe,
   faDatabase,
+  faPlug,
+  faWandMagicSparkles,
 } from '@fortawesome/free-solid-svg-icons'
 import './style.css'
 import App from './App.vue'
 import router from './router'
 
-library.add(faBars, faRightFromBracket, faXmark, faPlus, faPaperclip, faChevronDown, faGlobe, faDatabase)
+library.add(faBars, faRightFromBracket, faXmark, faPlus, faPaperclip, faChevronDown, faGlobe, faDatabase, faPlug, faWandMagicSparkles)
 
 createApp(App).component('font-awesome-icon', FontAwesomeIcon).use(router).mount('#app')

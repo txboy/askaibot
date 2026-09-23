@@ -5,6 +5,12 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+# 供沙箱执行技能代码调用宿主 docker（挂载 docker.sock）
+RUN printf '#!/bin/sh\nexit 0\n' > /usr/sbin/policy-rc.d \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends docker.io \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -14,7 +20,11 @@ RUN mkdir -p /app/data
 
 ENV DATABASE_URL=sqlite:////app/data/app.db \
     UPLOAD_DIR=/app/data/uploads \
-    FRONTEND_URL=http://localhost
+    FRONTEND_URL=http://localhost \
+    SKILL_SANDBOX=auto \
+    SKILL_RUNNER_IMAGE=askai-skill-runner \
+    SKILL_DATA_VOLUME=app_data \
+    SKILL_DATA_MOUNT=/app/data
 
 EXPOSE 8000
 

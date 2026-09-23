@@ -12,3 +12,5 @@ python-docx>=1.1
 openpyxl>=3.1
 alibabacloud-dysmsapi20170525>=1.0.0
 tencentcloud-sdk-python>=3.0.0
+mcp>=1.2
+PyYAML>=6.0

@@ -1,10 +1,13 @@
 """企微智能机器人：access_token、主动发送、媒体下载与基于机器人配置的回复生成。"""
 
+import json
 import time
 
 import httpx
 from sqlalchemy.orm import Session
 
+from . import mcp as mcp_core
+from . import skills as skill_core
 from . import models
 from .common import build_content_parts, get_setting, parse_models
 from .kb import format_kb_context, retrieve_kb
@@ -160,13 +163,72 @@ async def generate_reply(
     if context:
         messages = [{"role": "system", "content": context}] + messages
 
+    # 机器人单独配置的 MCP 工具（默认由大模型选用）
+    mcp_servers = mcp_core.resolve_servers(db, mcp_core.parse_ids(bot.mcp_ids))
+    mcp_tools, mcp_mapping = await mcp_core.build_openai_tools(mcp_servers)
+
+    # 机器人单独配置的技能
+    skills = skill_core.resolve_skills_by_ids(db, skill_core.parse_ids(bot.skill_ids))
+    skill_tools, skill_mapping = skill_core.build_openai_tools(skills)
+
+    tools = ((mcp_tools or []) + (skill_tools or [])) or None
+
+    for s in skills:
+        if s.content:
+            messages = [{"role": "system", "content": s.content}] + messages
+
     async with httpx.AsyncClient(timeout=120) as client:
-        resp = await client.post(
-            f"{base_url}/chat/completions",
-            headers=headers,
-            json={"model": model, "messages": messages, "stream": False},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    choice = (data.get("choices") or [{}])[0]
-    return (choice.get("message") or {}).get("content", "").strip()
+        content = ""
+        for round_index in range(3):
+            body: dict = {"model": model, "messages": messages, "stream": False}
+            if tools and round_index < 1:
+                body["tools"] = tools
+            resp = await client.post(
+                f"{base_url}/chat/completions",
+                headers=headers,
+                json=body,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            choice = (data.get("choices") or [{}])[0]
+            msg = choice.get("message") or {}
+            content = (msg.get("content") or "").strip()
+            tool_calls = msg.get("tool_calls") or []
+            if not tool_calls:
+                return content
+            if round_index >= 1:
+                return content
+
+            tool_messages = []
+            for tc in tool_calls:
+                fn = tc.get("function") or {}
+                name = fn.get("name") or ""
+                cid = tc.get("id") or "call_0"
+                args: dict = {}
+                try:
+                    args = json.loads(fn.get("arguments") or "{}")
+                except Exception:
+                    args = {}
+                if name in mcp_mapping:
+                    server, tool_name = mcp_mapping[name]
+                    try:
+                        tool_content = await mcp_core.call_tool(
+                            server, tool_name, args
+                        )
+                    except Exception as exc:
+                        tool_content = f"工具调用失败：{exc}"
+                elif name in skill_mapping:
+                    skill, tool = skill_mapping[name]
+                    try:
+                        tool_content = await skill_core.call_tool(skill, tool, args)
+                    except Exception as exc:
+                        tool_content = f"技能调用失败：{exc}"
+                else:
+                    tool_content = "该工具不可用，请重试。"
+                tool_messages.append(
+                    {"role": "tool", "tool_call_id": cid, "content": tool_content}
+                )
+            messages = messages + [
+                {"role": "assistant", "content": None, "tool_calls": tool_calls}
+            ] + tool_messages
+    return content

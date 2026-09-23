@@ -1,11 +1,15 @@
+import json
 import os
+import shutil
 import uuid
 from datetime import datetime, time
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from .. import mcp as mcp_core
+from .. import skills as skill_core
 from .. import models, schemas
 from ..auth import create_admin_token, get_current_admin
 from ..common import get_setting, mask_key
@@ -64,6 +68,51 @@ def create_endpoint(
     db.commit()
     db.refresh(endpoint)
     return _endpoint_out(endpoint)
+
+
+@router.get("/endpoints/usage")
+def endpoints_usage(
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    today_start = datetime.combine(datetime.now().date(), time.min)
+    month_start = datetime(datetime.now().year, datetime.now().month, 1)
+    result = []
+    for e in db.query(models.ApiEndpoint).all():
+        total = (
+            db.query(func.coalesce(func.sum(models.Message.tokens), 0))
+            .filter(models.Message.endpoint_id == e.id)
+            .scalar()
+        )
+        today = (
+            db.query(func.coalesce(func.sum(models.Message.tokens), 0))
+            .filter(
+                models.Message.endpoint_id == e.id,
+                models.Message.created_at >= today_start,
+            )
+            .scalar()
+        )
+        month = (
+            db.query(func.coalesce(func.sum(models.Message.tokens), 0))
+            .filter(
+                models.Message.endpoint_id == e.id,
+                models.Message.created_at >= month_start,
+            )
+            .scalar()
+        )
+        result.append(
+            {
+                "id": e.id,
+                "name": e.name,
+                "base_url": e.base_url,
+                "is_default": e.is_default,
+                "enabled": e.enabled,
+                "today_tokens": today,
+                "month_tokens": month,
+                "total_tokens": total,
+            }
+        )
+    return result
 
 
 @router.put("/endpoints/{endpoint_id}", response_model=schemas.EndpointOut)
@@ -189,6 +238,52 @@ def update_search(
     )
 
 
+def _sms_out(setting: models.Setting) -> schemas.SmsOut:
+    return schemas.SmsOut(
+        provider=setting.sms_provider or "",
+        access_key_id=setting.sms_access_key_id or "",
+        sign_name=setting.sms_sign_name or "",
+        template_code=setting.sms_template_code or "",
+        region=setting.sms_region or "",
+        sdk_app_id=setting.sms_sdk_app_id or "",
+        secret_set=bool(setting.sms_secret),
+    )
+
+
+@router.get("/sms", response_model=schemas.SmsOut)
+def get_sms(
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    return _sms_out(get_setting(db))
+
+
+@router.put("/sms", response_model=schemas.SmsOut)
+def update_sms(
+    payload: schemas.SmsUpdate,
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    setting = get_setting(db)
+    if payload.provider is not None:
+        setting.sms_provider = payload.provider
+    if payload.access_key_id is not None:
+        setting.sms_access_key_id = payload.access_key_id
+    if payload.secret:
+        setting.sms_secret = payload.secret
+    if payload.sign_name is not None:
+        setting.sms_sign_name = payload.sign_name
+    if payload.template_code is not None:
+        setting.sms_template_code = payload.template_code
+    if payload.region is not None:
+        setting.sms_region = payload.region
+    if payload.sdk_app_id is not None:
+        setting.sms_sdk_app_id = payload.sdk_app_id
+    db.commit()
+    db.refresh(setting)
+    return _sms_out(setting)
+
+
 def _kb_out(kb: models.KnowledgeBase) -> schemas.KnowledgeBaseOut:
     return schemas.KnowledgeBaseOut(
         id=kb.id,
@@ -280,6 +375,8 @@ def _bot_out(bot: models.WecomBot, db: Session) -> schemas.WecomBotOut:
         token_masked=mask_key(bot.token),
         aes_key_set=bool(bot.aes_key),
         kb_ids=bot.kb_ids,
+        mcp_ids=bot.mcp_ids,
+        skill_ids=bot.skill_ids,
         web_search=bot.web_search,
         endpoint_id=bot.endpoint_id,
         model=bot.model,
@@ -310,6 +407,7 @@ def create_wecom_bot(
         token=payload.token or "",
         aes_key=payload.aes_key or "",
         kb_ids=payload.kb_ids or "",
+        mcp_ids=payload.mcp_ids or "",
         web_search=payload.web_search or 0,
         endpoint_id=payload.endpoint_id,
         model=payload.model or "",
@@ -331,7 +429,7 @@ def update_wecom_bot(
     bot = db.get(models.WecomBot, bot_id)
     if not bot:
         raise HTTPException(status_code=404, detail="机器人不存在")
-    for field in ("name", "corp_id", "agent_id", "token", "aes_key", "kb_ids", "model"):
+    for field in ("name", "corp_id", "agent_id", "token", "aes_key", "kb_ids", "mcp_ids", "model"):
         val = getattr(payload, field)
         if val is not None:
             setattr(bot, field, val)
@@ -360,6 +458,188 @@ def delete_wecom_bot(
     db.delete(bot)
     db.commit()
     return {"ok": True}
+
+
+_SECRET_HEADER_KEYS = {
+    "authorization",
+    "x-api-key",
+    "api-key",
+    "apikey",
+    "token",
+    "key",
+    "secret",
+    "x-auth-token",
+}
+
+
+def _mask_headers(headers) -> dict:
+    out: dict = {}
+    if not isinstance(headers, dict):
+        return out
+    for k, v in headers.items():
+        if k.lower() in _SECRET_HEADER_KEYS:
+            out[k] = mask_key(str(v))
+        else:
+            out[k] = v
+    return out
+
+
+def _mcp_out(server: models.McpServer) -> schemas.McpServerOut:
+    tools = [
+        schemas.McpToolOut(
+            name=t["name"],
+            description=t.get("description") or "",
+            input_schema=t.get("input_schema") or {},
+        )
+        for t in (mcp_core.get_cached_tools(server.id) or [])
+    ]
+    headers = {}
+    try:
+        parsed = json.loads(server.headers or "{}")
+        if isinstance(parsed, dict):
+            headers = parsed
+    except Exception:
+        headers = {}
+    return schemas.McpServerOut(
+        id=server.id,
+        name=server.name,
+        description=server.description,
+        transport=server.transport,
+        url=server.url,
+        headers_masked=str(_mask_headers(headers)),
+        command=server.command,
+        args=server.args,
+        env_set=bool(server.env and server.env != "{}"),
+        mode=server.mode,
+        enabled=server.enabled,
+        tools=tools,
+    )
+
+
+@router.get("/mcp", response_model=list[schemas.McpServerOut])
+def list_mcp_servers(
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    return [_mcp_out(s) for s in db.query(models.McpServer).all()]
+
+
+@router.post("/mcp", response_model=schemas.McpServerOut)
+def create_mcp_server(
+    payload: schemas.McpServerCreate,
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    server = models.McpServer(
+        name=payload.name,
+        description=payload.description or "",
+        transport=payload.transport or "http",
+        url=payload.url or "",
+        headers=payload.headers or "{}",
+        command=payload.command or "",
+        args=payload.args or "[]",
+        env=payload.env or "{}",
+        mode=payload.mode or "llm",
+        enabled=payload.enabled or 1,
+    )
+    db.add(server)
+    db.commit()
+    db.refresh(server)
+    return _mcp_out(server)
+
+
+@router.put("/mcp/{server_id}", response_model=schemas.McpServerOut)
+def update_mcp_server(
+    server_id: int,
+    payload: schemas.McpServerUpdate,
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    server = db.get(models.McpServer, server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="MCP 服务不存在")
+    for field in (
+        "name",
+        "description",
+        "transport",
+        "url",
+        "headers",
+        "command",
+        "args",
+        "env",
+        "mode",
+    ):
+        val = getattr(payload, field)
+        if val is not None:
+            setattr(server, field, val)
+    if payload.enabled is not None:
+        server.enabled = payload.enabled
+    db.commit()
+    db.refresh(server)
+    mcp_core.clear_cache(server.id)
+    return _mcp_out(server)
+
+
+@router.delete("/mcp/{server_id}")
+def delete_mcp_server(
+    server_id: int,
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    server = db.get(models.McpServer, server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="MCP 服务不存在")
+    db.delete(server)
+    db.commit()
+    mcp_core.clear_cache(server.id)
+    return {"ok": True}
+
+
+@router.post("/mcp/{server_id}/test", response_model=list[schemas.McpToolOut])
+async def test_mcp_server(
+    server_id: int,
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    server = db.get(models.McpServer, server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="MCP 服务不存在")
+    try:
+        tools = await mcp_core.list_tools(server)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"连接失败：{exc}")
+    return [
+        schemas.McpToolOut(
+            name=t["name"],
+            description=t.get("description") or "",
+            input_schema=t.get("input_schema") or {},
+        )
+        for t in tools
+    ]
+
+
+@router.post("/mcp/{server_id}/refresh", response_model=list[schemas.McpToolOut])
+async def refresh_mcp_server(
+    server_id: int,
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    server = db.get(models.McpServer, server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="MCP 服务不存在")
+    mcp_core.clear_cache(server.id)
+    try:
+        tools = await mcp_core.list_tools(server)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"连接失败：{exc}")
+    return [
+        schemas.McpToolOut(
+            name=t["name"],
+            description=t.get("description") or "",
+            input_schema=t.get("input_schema") or {},
+        )
+        for t in tools
+    ]
 
 
 @router.get("/stats")
@@ -650,3 +930,281 @@ def delete_logo(
         setting.logo_path = ""
         db.commit()
     return {"logo_set": False}
+
+
+def _user_out(db: Session, u: models.User) -> schemas.AdminUserOut:
+    today_start = datetime.combine(datetime.now().date(), time.min)
+    conv_count = (
+        db.query(models.Conversation)
+        .filter(models.Conversation.user_id == u.id)
+        .count()
+    )
+    joined = (
+        db.query(func.coalesce(func.sum(models.Message.tokens), 0))
+        .join(models.Conversation, models.Message.conversation_id == models.Conversation.id)
+        .filter(models.Conversation.user_id == u.id)
+    )
+    total = joined.scalar()
+    today = (
+        joined.filter(models.Message.created_at >= today_start).scalar()
+    )
+    last_active = (
+        db.query(func.max(models.Message.created_at))
+        .join(models.Conversation, models.Message.conversation_id == models.Conversation.id)
+        .filter(models.Conversation.user_id == u.id)
+        .scalar()
+    )
+    return schemas.AdminUserOut(
+        id=u.id,
+        nickname=u.nickname,
+        phone=u.phone,
+        created_at=u.created_at,
+        conversation_count=conv_count,
+        last_active=last_active,
+        total_tokens=total,
+        today_tokens=today,
+    )
+
+
+@router.get("/users", response_model=list[schemas.AdminUserOut])
+def list_users(
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    users = (
+        db.query(models.User)
+        .order_by(models.User.created_at.desc())
+        .all()
+    )
+    return [_user_out(db, u) for u in users]
+
+
+@router.delete("/users/{user_id}")
+def delete_user(
+    user_id: int,
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    user = db.get(models.User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    conv_ids = [
+        c.id
+        for c in db.query(models.Conversation)
+        .filter(models.Conversation.user_id == user.id)
+        .all()
+    ]
+    attachments = (
+        db.query(models.Attachment)
+        .filter(models.Attachment.user_id == user.id)
+        .all()
+    )
+    for att in attachments:
+        old = os.path.join(config.upload_dir, att.stored_name)
+        if os.path.exists(old):
+            try:
+                os.remove(old)
+            except OSError:
+                pass
+    if conv_ids:
+        db.query(models.Message).filter(
+            models.Message.conversation_id.in_(conv_ids)
+        ).delete(synchronize_session=False)
+    db.query(models.Attachment).filter(
+        models.Attachment.user_id == user.id
+    ).delete(synchronize_session=False)
+    db.query(models.Conversation).filter(
+        models.Conversation.user_id == user.id
+    ).delete(synchronize_session=False)
+    db.delete(user)
+    db.commit()
+    return {"ok": True}
+
+
+@router.put("/password")
+def change_password(
+    payload: schemas.AdminPasswordChange,
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    if not verify_password(payload.old_password, admin.password_hash):
+        raise HTTPException(status_code=400, detail="原密码错误")
+    admin.password_hash = hash_password(payload.new_password)
+    db.commit()
+    return {"ok": True}
+
+
+def _skill_out(skill: models.Skill, db: Session) -> schemas.SkillOut:
+    try:
+        tools = json.loads(skill.tools or "[]")
+    except Exception:
+        tools = []
+    if not isinstance(tools, list):
+        tools = []
+    user_ids = [
+        a.user_id
+        for a in db.query(models.SkillAccess)
+        .filter(models.SkillAccess.skill_id == skill.id)
+        .all()
+    ]
+    return schemas.SkillOut(
+        id=skill.id,
+        name=skill.name,
+        description=skill.description,
+        scope=skill.scope,
+        enabled=skill.enabled,
+        tools=[
+            schemas.SkillToolOut(
+                name=t.get("name", ""),
+                description=t.get("description") or "",
+                command=t.get("command") or "",
+                input_schema=t.get("input_schema") or {},
+            )
+            for t in tools
+        ],
+        user_ids=user_ids,
+    )
+
+
+@router.get("/skills", response_model=list[schemas.SkillOut])
+def list_skills(
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    return [_skill_out(s, db) for s in db.query(models.Skill).all()]
+
+
+@router.post("/skills", response_model=schemas.SkillOut)
+async def create_skill(
+    file: UploadFile = File(...),
+    scope: str = Form("global"),
+    enabled: int = Form(1),
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    if scope not in ("global", "user"):
+        scope = "global"
+    skills_base = os.path.join(config.upload_dir, "skills")
+    os.makedirs(skills_base, exist_ok=True)
+    tmp_zip = os.path.join(skills_base, f"_upload_{uuid.uuid4().hex}.zip")
+    tmp_dir = os.path.join(skills_base, f".tmp_{uuid.uuid4().hex}")
+    try:
+        content = await file.read()
+        with open(tmp_zip, "wb") as fh:
+            fh.write(content)
+        try:
+            skill_core.extract_upload(tmp_zip, tmp_dir)
+            info = skill_core.parse_skill(tmp_dir)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"技能包解析失败：{exc}")
+        skill = models.Skill(
+            name=info["name"],
+            description=info["description"],
+            dir_path=tmp_dir,
+            content=info["content"],
+            tools=json.dumps(info["tools"], ensure_ascii=False),
+            scope=scope,
+            enabled=enabled,
+        )
+        db.add(skill)
+        db.commit()
+        db.refresh(skill)
+        final_dir = os.path.join(skills_base, str(skill.id))
+        if os.path.isdir(final_dir):
+            shutil.rmtree(final_dir, ignore_errors=True)
+        shutil.move(tmp_dir, final_dir)
+        tmp_dir = final_dir
+        skill.dir_path = final_dir
+        db.commit()
+        db.refresh(skill)
+        return _skill_out(skill, db)
+    finally:
+        if os.path.exists(tmp_zip):
+            try:
+                os.remove(tmp_zip)
+            except OSError:
+                pass
+        if os.path.isdir(tmp_dir) and not os.path.exists(
+            os.path.join(tmp_dir, "SKILL.md")
+        ):
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+@router.put("/skills/{skill_id}", response_model=schemas.SkillOut)
+def update_skill(
+    skill_id: int,
+    payload: schemas.SkillUpdate,
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    skill = db.get(models.Skill, skill_id)
+    if not skill:
+        raise HTTPException(status_code=404, detail="技能不存在")
+    if payload.name is not None:
+        skill.name = payload.name
+    if payload.description is not None:
+        skill.description = payload.description
+    if payload.scope is not None:
+        if payload.scope not in ("global", "user"):
+            raise HTTPException(status_code=400, detail="scope 仅支持 global/user")
+        skill.scope = payload.scope
+    if payload.enabled is not None:
+        skill.enabled = payload.enabled
+    if payload.user_ids is not None:
+        db.query(models.SkillAccess).filter(
+            models.SkillAccess.skill_id == skill.id
+        ).delete()
+        for uid in payload.user_ids:
+            db.add(models.SkillAccess(skill_id=skill.id, user_id=uid))
+    db.commit()
+    db.refresh(skill)
+    return _skill_out(skill, db)
+
+
+@router.delete("/skills/{skill_id}")
+def delete_skill(
+    skill_id: int,
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    skill = db.get(models.Skill, skill_id)
+    if not skill:
+        raise HTTPException(status_code=404, detail="技能不存在")
+    if skill.dir_path:
+        shutil.rmtree(skill.dir_path, ignore_errors=True)
+    db.query(models.SkillAccess).filter(
+        models.SkillAccess.skill_id == skill.id
+    ).delete()
+    db.delete(skill)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/skills/{skill_id}/test")
+async def test_skill(
+    skill_id: int,
+    payload: schemas.SkillTestRequest,
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    skill = db.get(models.Skill, skill_id)
+    if not skill:
+        raise HTTPException(status_code=404, detail="技能不存在")
+    try:
+        tools = json.loads(skill.tools or "[]")
+    except Exception:
+        tools = []
+    if not isinstance(tools, list):
+        tools = []
+    tool = next(
+        (t for t in tools if isinstance(t, dict) and t.get("name") == payload.tool),
+        None,
+    )
+    if not tool:
+        raise HTTPException(status_code=400, detail=f"技能中不存在工具：{payload.tool}")
+    try:
+        output = await skill_core.call_tool(skill, tool, payload.args or {})
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"执行失败：{exc}")
+    return {"output": output}
+

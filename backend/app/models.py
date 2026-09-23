@@ -32,6 +32,8 @@ class Conversation(Base):
     bot_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     title: Mapped[str] = mapped_column(String, default="新对话")
     model: Mapped[str] = mapped_column(String, default="")
+    mcp_ids: Mapped[str] = mapped_column(String, default="")  # 逗号分隔的 MCP id
+    skill_ids: Mapped[str] = mapped_column(String, default="")  # 逗号分隔的 Skill id
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
@@ -110,6 +112,8 @@ class WecomBot(Base):
     token: Mapped[str] = mapped_column(String, default="")
     aes_key: Mapped[str] = mapped_column(String, default="")
     kb_ids: Mapped[str] = mapped_column(String, default="")  # 逗号分隔
+    mcp_ids: Mapped[str] = mapped_column(String, default="")  # 逗号分隔
+    skill_ids: Mapped[str] = mapped_column(String, default="")  # 逗号分隔
     web_search: Mapped[int] = mapped_column(Integer, default=0)
     endpoint_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("api_endpoints.id"), nullable=True
@@ -147,6 +151,26 @@ class Admin(Base):
     password_hash: Mapped[str] = mapped_column(String)
 
 
+class McpServer(Base):
+    __tablename__ = "mcp_servers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String)
+    description: Mapped[str] = mapped_column(String, default="")
+    transport: Mapped[str] = mapped_column(String, default="http")  # http / stdio
+    url: Mapped[str] = mapped_column(String, default="")
+    headers: Mapped[str] = mapped_column(Text, default="{}")  # JSON
+    command: Mapped[str] = mapped_column(String, default="")
+    args: Mapped[str] = mapped_column(Text, default="[]")  # JSON
+    env: Mapped[str] = mapped_column(Text, default="{}")  # JSON
+    mode: Mapped[str] = mapped_column(String, default="llm")  # llm / frontend
+    enabled: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+
 class ApiEndpoint(Base):
     __tablename__ = "api_endpoints"
 
@@ -161,3 +185,30 @@ class ApiEndpoint(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
+
+
+class Skill(Base):
+    __tablename__ = "skills"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String)
+    description: Mapped[str] = mapped_column(String, default="")
+    dir_path: Mapped[str] = mapped_column(String, default="")  # upload_dir 内的技能包目录
+    content: Mapped[str] = mapped_column(Text, default="")  # SKILL.md 正文（注入系统提示词）
+    tools: Mapped[str] = mapped_column(Text, default="[]")  # JSON：工具声明列表
+    scope: Mapped[str] = mapped_column(String, default="global")  # global / user
+    enabled: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class SkillAccess(Base):
+    __tablename__ = "skill_access"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    skill_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("skills.id"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), index=True)

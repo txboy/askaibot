@@ -33,8 +33,38 @@ def create_conversation(
         user_id=user.id,
         title=payload.title or "新对话",
         model=payload.model or setting.default_model,
+        mcp_ids=payload.mcp_ids or "",
+        skill_ids=payload.skill_ids or "",
     )
     db.add(conversation)
+    db.commit()
+    db.refresh(conversation)
+    return conversation
+
+
+@router.put("/{conversation_id}/mcp", response_model=schemas.ConversationOut)
+def update_conversation_mcp(
+    conversation_id: int,
+    payload: schemas.ConversationMcpUpdate,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    conversation = _get_owned(db, conversation_id, user)
+    conversation.mcp_ids = payload.mcp_ids
+    db.commit()
+    db.refresh(conversation)
+    return conversation
+
+
+@router.put("/{conversation_id}/skills", response_model=schemas.ConversationOut)
+def update_conversation_skills(
+    conversation_id: int,
+    payload: schemas.ConversationSkillUpdate,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    conversation = _get_owned(db, conversation_id, user)
+    conversation.skill_ids = payload.skill_ids
     db.commit()
     db.refresh(conversation)
     return conversation

@@ -10,8 +10,19 @@ services:
       - JWT_SECRET=${JWT_SECRET:-change-this-super-secret-key-please-32bytes-min}
     volumes:
       - app_data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8000:8000"
+
+  # 技能代码沙箱运行时镜像（python + node）。先构建一次：
+  #   docker compose build skill-runner
+  skill-runner:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.skill-runner
+    image: askai-skill-runner
+    restart: "no"
+    profiles: ["skill"]
 
   frontend:
     build:

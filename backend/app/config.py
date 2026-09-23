@@ -11,6 +11,15 @@ class Config(BaseSettings):
     upload_dir: str = "./data/uploads"
     max_upload_size: int = 20 * 1024 * 1024
 
+    skill_sandbox: str = "auto"  # auto / docker / local
+    skill_runner_image: str = "askai-skill-runner"
+    skill_data_volume: str = "app_data"
+    skill_data_mount: str = "/app/data"
+    skill_timeout: int = 60
+    skill_cpus: str = "1"
+    skill_memory: str = "512m"
+    skill_pids_limit: int = 64
+
     class Config:
         env_file = ".env"
         env_prefix = ""

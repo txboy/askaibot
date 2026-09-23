@@ -60,9 +60,13 @@ export const api = {
   renameConversation: (id, title) => request(`/conversations/${id}`, { method: 'PUT', body: { title } }),
   deleteConversation: (id) => request(`/conversations/${id}`, { method: 'DELETE' }),
   messages: (id) => request(`/conversations/${id}/messages`),
+  updateConversationMcp: (id, mcpIds) => request(`/conversations/${id}/mcp`, { method: 'PUT', body: { mcp_ids: mcpIds } }),
+  updateConversationSkills: (id, skillIds) => request(`/conversations/${id}/skills`, { method: 'PUT', body: { skill_ids: skillIds } }),
 
   endpoints: () => request('/endpoints'),
   knowledgeBases: () => request('/knowledge-bases'),
+  mcpServers: () => request('/mcp'),
+  skills: () => request('/skills'),
 
   getTheme: () => request('/config/theme'),
   getDebug: () => request('/config/debug'),
@@ -125,6 +129,37 @@ export const api = {
   adminCreateWecomBot: (data) => adminRequest('/admin/wecom-bots', { method: 'POST', body: data }),
   adminUpdateWecomBot: (id, data) => adminRequest(`/admin/wecom-bots/${id}`, { method: 'PUT', body: data }),
   adminDeleteWecomBot: (id) => adminRequest(`/admin/wecom-bots/${id}`, { method: 'DELETE' }),
+  adminMcpServers: () => adminRequest('/admin/mcp'),
+  adminCreateMcp: (data) => adminRequest('/admin/mcp', { method: 'POST', body: data }),
+  adminUpdateMcp: (id, data) => adminRequest(`/admin/mcp/${id}`, { method: 'PUT', body: data }),
+  adminDeleteMcp: (id) => adminRequest(`/admin/mcp/${id}`, { method: 'DELETE' }),
+  adminTestMcp: (id) => adminRequest(`/admin/mcp/${id}/test`, { method: 'POST' }),
+  adminRefreshMcp: (id) => adminRequest(`/admin/mcp/${id}/refresh`, { method: 'POST' }),
+  adminSkills: () => adminRequest('/admin/skills'),
+  adminUploadSkill: (file, scope = 'global', enabled = 1) => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('scope', scope)
+    form.append('enabled', String(enabled))
+    return fetch(BASE + '/admin/skills', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${store.adminToken}` },
+      body: form,
+    }).then(async (res) => {
+      if (!res.ok) {
+        let msg = `上传失败 (${res.status})`
+        try {
+          const j = await res.json()
+          if (j.detail) msg = String(j.detail)
+        } catch {}
+        throw new Error(msg)
+      }
+      return res.json()
+    })
+  },
+  adminUpdateSkill: (id, data) => adminRequest(`/admin/skills/${id}`, { method: 'PUT', body: data }),
+  adminDeleteSkill: (id) => adminRequest(`/admin/skills/${id}`, { method: 'DELETE' }),
+  adminTestSkill: (id, tool, args = {}) => adminRequest(`/admin/skills/${id}/test`, { method: 'POST', body: { tool, args } }),
   adminUsers: () => adminRequest('/admin/users'),
   adminDeleteUser: (id) => adminRequest(`/admin/users/${id}`, { method: 'DELETE' }),
   adminChangePassword: (data) => adminRequest('/admin/password', { method: 'PUT', body: data }),

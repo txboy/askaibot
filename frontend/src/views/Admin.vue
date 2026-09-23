@@ -4,6 +4,10 @@ import { api } from '../api'
 import { store } from '../store'
 import { applyTheme } from '../theme'
 import Logo from '../components/Logo.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import { useConfirm } from '../composables/useConfirm'
+
+const confirmDlg = useConfirm()
 
 const username = ref('')
 const password = ref('')
@@ -17,6 +21,8 @@ const navItems = [
   { key: 'endpoints', label: '接口设置' },
   { key: 'sms', label: '短信接口' },
   { key: 'search', label: '联网搜索' },
+  { key: 'mcp', label: 'MCP 工具' },
+  { key: 'skill', label: '技能包' },
   { key: 'knowledge', label: '知识库' },
   { key: 'wecom', label: '企微设置' },
   { key: 'wecom-bot', label: '企微机器人' },
@@ -133,6 +139,33 @@ const botMsg = ref('')
 const savingBot = ref(false)
 const editingBot = ref(null)
 
+const mcps = ref([])
+const mcpMsg = ref('')
+const savingMcp = ref(false)
+const editingMcp = ref(null)
+const mcpTestTools = ref(null)
+const mcpTransports = [
+  { value: 'http', label: 'HTTP（Streamable HTTP）' },
+  { value: 'stdio', label: '本地 stdio 子进程' },
+]
+const mcpModes = [
+  { value: 'llm', label: '大模型选用（默认注入）' },
+  { value: 'frontend', label: '前端选用（用户勾选）' },
+]
+
+const skills = ref([])
+const skillMsg = ref('')
+const savingSkill = ref(false)
+const editingSkill = ref(null)
+const skillTest = ref(null)
+const skillUploadFile = ref(null)
+const skillUploadScope = ref('global')
+const skillUploadEnabled = ref(true)
+const skillScopes = [
+  { value: 'global', label: '全部用户' },
+  { value: 'user', label: '指定用户' },
+]
+
 const isAdmin = () => !!store.adminToken
 
 async function doLogin() {
@@ -153,7 +186,7 @@ async function doLogin() {
 
 async function load() {
   try {
-    await Promise.all([loadEndpoints(), loadWecom(), loadLogo(), loadStats(), loadUsers(), loadEndpointsUsage(), loadTheme(), loadDebug(), loadSms(), loadSystem(), loadKbs(), loadBots()])
+    await Promise.all([loadEndpoints(), loadWecom(), loadLogo(), loadStats(), loadUsers(), loadEndpointsUsage(), loadTheme(), loadDebug(), loadSms(), loadSystem(), loadKbs(), loadBots(), loadMcps(), loadSkills()])
   } catch (e) {
     if (String(e.message).includes('401') || String(e.message).includes('管理员')) {
       logout()
@@ -171,6 +204,8 @@ async function selectSection(key) {
     else if (key === 'endpoints') await loadEndpoints()
     else if (key === 'sms') await loadSms()
     else if (key === 'search') await loadSearch()
+    else if (key === 'mcp') await loadMcps()
+    else if (key === 'skill') await loadSkills()
     else if (key === 'knowledge') await loadKbs()
     else if (key === 'wecom') await loadWecom()
     else if (key === 'wecom-bot') await loadBots()
@@ -340,7 +375,7 @@ async function uploadFavicon() {
 }
 
 async function resetFavicon() {
-  if (!confirm('恢复默认图标（删除自定义 favicon）？')) return
+  if (!(await confirmDlg.askConfirm('恢复默认图标（删除自定义 favicon）？', { title: '恢复默认 favicon' }))) return
   try {
     await api.adminDeleteFavicon()
     faviconFile.value = null
@@ -379,7 +414,7 @@ async function uploadAssistantAvatar() {
 }
 
 async function resetAssistantAvatar() {
-  if (!confirm('恢复默认（删除助手默认头像）？')) return
+  if (!(await confirmDlg.askConfirm('恢复默认（删除助手默认头像）？', { title: '恢复默认头像' }))) return
   try {
     await api.adminDeleteAssistantAvatar()
     assistantAvatarFile.value = null
@@ -519,7 +554,7 @@ async function saveKb() {
 }
 
 async function delKb(kb) {
-  if (!confirm(`删除知识库「${kb.name}」？`)) return
+  if (!(await confirmDlg.askConfirm(`删除知识库「${kb.name}」？`, { title: '删除知识库', danger: true }))) return
   try {
     await api.adminDeleteKnowledgeBase(kb.id)
     await loadKbs()
@@ -546,6 +581,8 @@ function openBotCreate() {
     token: '',
     aes_key: '',
     kb_ids: [],
+    mcp_ids: [],
+    skill_ids: [],
     web_search: 0,
     endpoint_id: null,
     model: '',
@@ -566,6 +603,8 @@ function openBotEdit(b) {
     aes_key_set: b.aes_key_set,
     callback_url: b.callback_url,
     kb_ids: (b.kb_ids || '').split(',').filter(Boolean).map(Number),
+    mcp_ids: (b.mcp_ids || '').split(',').filter(Boolean).map(Number),
+    skill_ids: (b.skill_ids || '').split(',').filter(Boolean).map(Number),
     web_search: b.web_search,
     endpoint_id: b.endpoint_id,
     model: b.model,
@@ -603,6 +642,8 @@ async function saveBot() {
       agent_id: f.agent_id,
       token: f.token,
       kb_ids: (f.kb_ids || []).join(','),
+      mcp_ids: (f.mcp_ids || []).join(','),
+      skill_ids: (f.skill_ids || []).join(','),
       web_search: f.web_search || 0,
       endpoint_id: f.endpoint_id || null,
       model: f.model,
@@ -625,7 +666,7 @@ async function saveBot() {
 }
 
 async function delBot(b) {
-  if (!confirm(`删除机器人「${b.name}」？`)) return
+  if (!(await confirmDlg.askConfirm(`删除机器人「${b.name}」？`, { title: '删除机器人', danger: true }))) return
   try {
     await api.adminDeleteWecomBot(b.id)
     await loadBots()
@@ -634,8 +675,241 @@ async function delBot(b) {
   }
 }
 
+async function loadMcps() {
+  try {
+    mcps.value = await api.adminMcpServers()
+    mcpMsg.value = ''
+  } catch {
+    mcpMsg.value = '加载 MCP 服务失败'
+  }
+}
+
+function openMcpCreate() {
+  editingMcp.value = {
+    name: '',
+    description: '',
+    transport: 'http',
+    url: '',
+    headers: '',
+    command: '',
+    args: '[]',
+    env: '{}',
+    mode: 'llm',
+    enabled: 1,
+    tools: [],
+  }
+}
+
+function openMcpEdit(m) {
+  editingMcp.value = {
+    id: m.id,
+    name: m.name,
+    description: m.description || '',
+    transport: m.transport,
+    url: m.url || '',
+    headers: '',
+    command: m.command || '',
+    args: m.args || '[]',
+    env: m.env || '{}',
+    mode: m.mode,
+    enabled: m.enabled,
+    tools: m.tools || [],
+  }
+}
+
+async function saveMcp() {
+  if (!editingMcp.value) return
+  const f = editingMcp.value
+  if (!f.name) return (mcpMsg.value = '请填写服务名称')
+  savingMcp.value = true
+  mcpMsg.value = ''
+  try {
+    const body = {
+      name: f.name,
+      description: f.description || '',
+      transport: f.transport,
+      url: f.url || '',
+      command: f.command || '',
+      args: f.args || '[]',
+      env: f.env || '{}',
+      mode: f.mode,
+      enabled: f.enabled,
+    }
+    if (f.transport === 'http' && f.headers) body.headers = f.headers
+    if (f.id) {
+      await api.adminUpdateMcp(f.id, body)
+    } else {
+      body.headers = f.headers || '{}'
+      await api.adminCreateMcp(body)
+    }
+    editingMcp.value = null
+    await loadMcps()
+  } catch (e) {
+    mcpMsg.value = e.message
+  } finally {
+    savingMcp.value = false
+  }
+}
+
+async function delMcp(m) {
+  if (!(await confirmDlg.askConfirm(`删除 MCP 服务「${m.name}」？`, { title: '删除 MCP 服务', danger: true }))) return
+  try {
+    await api.adminDeleteMcp(m.id)
+    await loadMcps()
+  } catch (e) {
+    mcpMsg.value = e.message
+  }
+}
+
+async function testMcp(m) {
+  try {
+    const tools = await api.adminTestMcp(m.id)
+    mcpTestTools.value = { name: m.name, tools, error: '' }
+  } catch (e) {
+    mcpTestTools.value = { name: m.name, tools: [], error: e.message }
+  }
+}
+
+async function refreshMcpTools() {
+  const f = editingMcp.value
+  if (!f || !f.id) return
+  mcpMsg.value = ''
+  try {
+    const tools = await api.adminRefreshMcp(f.id)
+    f.tools = tools
+    mcpMsg.value = `已刷新，共 ${tools.length} 个工具`
+  } catch (e) {
+    mcpMsg.value = e.message
+  }
+}
+
+function toggleBotMcp(mcpId) {
+  const arr = editingBot.value.mcp_ids
+  const idx = arr.indexOf(mcpId)
+  if (idx >= 0) arr.splice(idx, 1)
+  else arr.push(mcpId)
+}
+
+function toggleBotSkill(skillId) {
+  const arr = editingBot.value.skill_ids
+  const idx = arr.indexOf(skillId)
+  if (idx >= 0) arr.splice(idx, 1)
+  else arr.push(skillId)
+}
+
+async function loadSkills() {
+  try {
+    skills.value = await api.adminSkills()
+    skillMsg.value = ''
+  } catch {
+    skillMsg.value = '加载技能包失败'
+  }
+}
+
+function onSkillFile(e) {
+  skillUploadFile.value = e.target.files[0] || null
+}
+
+async function uploadSkill() {
+  if (!skillUploadFile.value) return (skillMsg.value = '请选择技能包文件')
+  savingSkill.value = true
+  skillMsg.value = ''
+  try {
+    await api.adminUploadSkill(skillUploadFile.value, skillUploadScope.value, skillUploadEnabled.value ? 1 : 0)
+    skillUploadFile.value = null
+    skillMsg.value = '上传成功'
+    await loadSkills()
+  } catch (e) {
+    skillMsg.value = e.message
+  } finally {
+    savingSkill.value = false
+  }
+}
+
+function openSkillEdit(s) {
+  editingSkill.value = {
+    id: s.id,
+    name: s.name,
+    description: s.description || '',
+    scope: s.scope,
+    enabled: s.enabled,
+    user_ids: (s.user_ids || []).slice(),
+  }
+  if (users.value.length === 0) loadUsers().catch(() => {})
+}
+
+function toggleSkillUser(uid) {
+  const arr = editingSkill.value.user_ids
+  const idx = arr.indexOf(uid)
+  if (idx >= 0) arr.splice(idx, 1)
+  else arr.push(uid)
+}
+
+async function saveSkill() {
+  if (!editingSkill.value) return
+  const f = editingSkill.value
+  savingSkill.value = true
+  skillMsg.value = ''
+  try {
+    await api.adminUpdateSkill(f.id, {
+      name: f.name,
+      description: f.description,
+      scope: f.scope,
+      enabled: f.enabled,
+      user_ids: f.scope === 'user' ? f.user_ids : [],
+    })
+    editingSkill.value = null
+    await loadSkills()
+  } catch (e) {
+    skillMsg.value = e.message
+  } finally {
+    savingSkill.value = false
+  }
+}
+
+async function delSkill(s) {
+  if (!(await confirmDlg.askConfirm(`删除技能包「${s.name}」？`, { title: '删除技能包', danger: true }))) return
+  try {
+    await api.adminDeleteSkill(s.id)
+    await loadSkills()
+  } catch (e) {
+    skillMsg.value = e.message
+  }
+}
+
+function openSkillTest(s) {
+  skillTest.value = {
+    skill: s,
+    tool: s.tools?.[0]?.name || '',
+    args: '{}',
+    output: '',
+    loading: false,
+  }
+}
+
+async function runSkillTest() {
+  const t = skillTest.value
+  if (!t) return
+  let args = {}
+  try {
+    args = JSON.parse(t.args || '{}')
+  } catch {
+    t.output = '参数 JSON 无效'
+    return
+  }
+  t.loading = true
+  try {
+    const r = await api.adminTestSkill(t.skill.id, t.tool, args)
+    t.output = r.output
+  } catch (e) {
+    t.output = e.message
+  } finally {
+    t.loading = false
+  }
+}
+
 async function delUser(u) {
-  if (!confirm(`删除用户「${u.nickname}」（连同其会话、消息与附件）？`)) return
+  if (!(await confirmDlg.askConfirm(`删除用户「${u.nickname}」（连同其会话、消息与附件）？`, { title: '删除用户', danger: true }))) return
   try {
     await api.adminDeleteUser(u.id)
     await Promise.all([loadUsers(), loadStats()])
@@ -713,7 +987,7 @@ async function uploadLogo() {
 }
 
 async function resetLogo() {
-  if (!confirm('恢复默认 Logo（删除自定义 Logo）？')) return
+  if (!(await confirmDlg.askConfirm('恢复默认 Logo（删除自定义 Logo）？', { title: '恢复默认 Logo' }))) return
   try {
     await api.adminDeleteLogo()
     logoFile.value = null
@@ -761,7 +1035,7 @@ async function save() {
 }
 
 async function del(e) {
-  if (!confirm(`删除接口「${e.name}」？`)) return
+  if (!(await confirmDlg.askConfirm(`删除接口「${e.name}」？`, { title: '删除接口', danger: true }))) return
   await api.adminDeleteEndpoint(e.id)
   await load()
 }
@@ -931,8 +1205,8 @@ onMounted(() => {
                 <td>{{ u.today_tokens }}</td>
                 <td>{{ fmtDate(u.created_at) }}</td>
                 <td>{{ fmtDate(u.last_active) }}</td>
-                <td>
-                  <button class="btn-ghost del" @click="delUser(u)">删除</button>
+                <td class="ops">
+                  <button class="btn btn-del" @click="delUser(u)">删除</button>
                 </td>
               </tr>
               <tr v-if="!users.length">
@@ -967,9 +1241,9 @@ onMounted(() => {
                 <td>{{ e.models }}</td>
                 <td>{{ e.is_default ? '●' : '' }}</td>
                 <td>{{ e.enabled ? '✓' : '✕' }}</td>
-                <td>
-                  <button class="btn-ghost" @click="openEdit(e)">编辑</button>
-                  <button class="btn-ghost del" @click="del(e)">删除</button>
+                <td class="ops">
+                  <button class="btn btn-edit" @click="openEdit(e)">编辑</button>
+                  <button class="btn btn-del" @click="del(e)">删除</button>
                 </td>
               </tr>
               <tr v-if="!endpoints.length">
@@ -1035,6 +1309,91 @@ onMounted(() => {
           </div>
         </section>
 
+        <section v-else-if="active === 'mcp'" class="content">
+          <div class="head">
+            <h2>MCP 工具</h2>
+            <button class="btn" @click="openMcpCreate">＋ 添加 MCP 服务</button>
+          </div>
+          <p v-if="mcpMsg" class="msg">{{ mcpMsg }}</p>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>传输</th>
+                <th>模式</th>
+                <th>工具数</th>
+                <th>启用</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="m in mcps" :key="m.id">
+                <td>{{ m.name }}</td>
+                <td>{{ m.transport === 'stdio' ? 'stdio' : 'HTTP' }}</td>
+                <td>{{ m.mode === 'frontend' ? '前端选用' : '大模型选用' }}</td>
+                <td>{{ m.tools?.length || 0 }}</td>
+                <td>{{ m.enabled ? '✓' : '✕' }}</td>
+                <td class="ops">
+                  <button class="btn btn-edit" @click="openMcpEdit(m)">编辑</button>
+                  <button class="btn btn-test" @click="testMcp(m)">测试</button>
+                  <button class="btn btn-del" @click="delMcp(m)">删除</button>
+                </td>
+              </tr>
+              <tr v-if="!mcps.length">
+                <td colspan="6" class="empty">暂无 MCP 服务，点击「添加 MCP 服务」创建</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="hint" style="margin-top: 10px">
+            MCP（Model Context Protocol）通过工具调用让大模型连接外部服务。HTTP 使用 Streamable HTTP 传输；stdio 在服务端启动本地子进程（配置 command/args/env）。「大模型选用」的工具默认注入、模型自主调用；「前端选用」的工具由用户在聊天页勾选启用。可在企微机器人中配置 MCP，让机器人自动选用。
+          </p>
+        </section>
+
+        <section v-else-if="active === 'skill'" class="content">
+          <div class="head">
+            <h2>技能包</h2>
+          </div>
+          <p v-if="skillMsg" class="msg">{{ skillMsg }}</p>
+          <div class="skill-upload">
+            <input type="file" accept=".zip,.tar.gz,.tgz" @change="onSkillFile" />
+            <select v-model="skillUploadScope" class="input">
+              <option v-for="sc in skillScopes" :key="sc.value" :value="sc.value">{{ sc.label }}</option>
+            </select>
+            <label class="check"><input type="checkbox" v-model="skillUploadEnabled" /> 启用</label>
+            <button class="btn" :disabled="savingSkill" @click="uploadSkill">{{ savingSkill ? '上传中…' : '上传技能包' }}</button>
+          </div>
+          <p class="hint" style="margin-top: 6px">支持 zip / tar.gz，内含 SKILL.md（frontmatter 声明 name/description/tools，正文注入系统提示词）。工具在聊天中被调用时在沙箱中执行。</p>
+          <table class="table" style="margin-top: 12px">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>描述</th>
+                <th>可见性</th>
+                <th>工具数</th>
+                <th>启用</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="s in skills" :key="s.id">
+                <td>{{ s.name }}</td>
+                <td>{{ s.description || '—' }}</td>
+                <td>{{ s.scope === 'user' ? '指定用户' : '全部用户' }}</td>
+                <td>{{ s.tools?.length || 0 }}</td>
+                <td>{{ s.enabled ? '✓' : '✕' }}</td>
+                <td class="ops">
+                  <button class="btn btn-edit" @click="openSkillEdit(s)">编辑</button>
+                  <button class="btn btn-test" @click="openSkillTest(s)">测试</button>
+                  <button class="btn btn-del" @click="delSkill(s)">删除</button>
+                </td>
+              </tr>
+              <tr v-if="!skills.length">
+                <td colspan="6" class="empty">暂无技能包，上传一个技能包开始使用</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
         <section v-else-if="active === 'knowledge'" class="content">
           <div class="head">
             <h2>知识库</h2>
@@ -1057,9 +1416,9 @@ onMounted(() => {
                 <td class="mono">{{ kb.base_url }}</td>
                 <td>{{ kb.description || '—' }}</td>
                 <td>{{ kb.enabled ? '✓' : '✕' }}</td>
-                <td>
-                  <button class="btn-ghost" @click="openKbEdit(kb)">编辑</button>
-                  <button class="btn-ghost del" @click="delKb(kb)">删除</button>
+                <td class="ops">
+                  <button class="btn btn-edit" @click="openKbEdit(kb)">编辑</button>
+                  <button class="btn btn-del" @click="delKb(kb)">删除</button>
                 </td>
               </tr>
               <tr v-if="!kbs.length">
@@ -1101,6 +1460,7 @@ onMounted(() => {
                 <th>AgentId</th>
                 <th>联网</th>
                 <th>知识库</th>
+                <th>MCP</th>
                 <th>启用</th>
                 <th>操作</th>
               </tr>
@@ -1111,14 +1471,15 @@ onMounted(() => {
                 <td class="mono">{{ b.agent_id }}</td>
                 <td>{{ b.web_search ? '✓' : '✕' }}</td>
                 <td>{{ b.kb_ids || '—' }}</td>
+                <td>{{ b.mcp_ids || '—' }}</td>
                 <td>{{ b.enabled ? '✓' : '✕' }}</td>
-                <td>
-                  <button class="btn-ghost" @click="openBotEdit(b)">编辑</button>
-                  <button class="btn-ghost del" @click="delBot(b)">删除</button>
+                <td class="ops">
+                  <button class="btn btn-edit" @click="openBotEdit(b)">编辑</button>
+                  <button class="btn btn-del" @click="delBot(b)">删除</button>
                 </td>
               </tr>
               <tr v-if="!bots.length">
-                <td colspan="6" class="empty">暂无机器人，点击「添加机器人」创建</td>
+                <td colspan="7" class="empty">暂无机器人，点击「添加机器人」创建</td>
               </tr>
             </tbody>
           </table>
@@ -1352,6 +1713,24 @@ onMounted(() => {
           </label>
           <label class="check" style="margin-top: 10px"><input type="checkbox" v-model="editingBot.web_search" :true-value="1" :false-value="0" /> 启用联网搜索</label>
         </div>
+        <label>MCP 工具（大模型选用）
+          <div class="kb-checkbox-list">
+            <label v-for="m in mcps" :key="m.id" class="check">
+              <input type="checkbox" :value="m.id" :checked="editingBot.mcp_ids.includes(m.id)" @change="toggleBotMcp(m.id)" />
+              {{ m.name }}
+            </label>
+            <span v-if="!mcps.length" class="hint">暂无 MCP 服务</span>
+          </div>
+        </label>
+        <label>技能包（大模型选用）
+          <div class="kb-checkbox-list">
+            <label v-for="sk in skills" :key="sk.id" class="check">
+              <input type="checkbox" :value="sk.id" :checked="editingBot.skill_ids.includes(sk.id)" @change="toggleBotSkill(sk.id)" />
+              {{ sk.name }}
+            </label>
+            <span v-if="!skills.length" class="hint">暂无技能包</span>
+          </div>
+        </label>
         <label class="check"><input type="checkbox" v-model="editingBot.enabled" :true-value="1" :false-value="0" /> 启用</label>
         <p v-if="editingBot.id" class="hint" style="margin-top: 8px">
           回调地址：<code>{{ editingBot.callback_url }}</code>
@@ -1363,6 +1742,114 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <div v-if="editingMcp" class="modal-mask" @click.self="editingMcp = null">
+      <div class="modal">
+        <h3>{{ editingMcp.id ? '编辑 MCP 服务' : '添加 MCP 服务' }}</h3>
+        <label>名称<input v-model="editingMcp.name" class="input" placeholder="如 天气服务" /></label>
+        <label>说明<textarea v-model="editingMcp.description" class="input" rows="2" placeholder="服务简介（可选）"></textarea></label>
+        <label>传输方式
+          <select v-model="editingMcp.transport" class="input">
+            <option v-for="t in mcpTransports" :key="t.value" :value="t.value">{{ t.label }}</option>
+          </select>
+        </label>
+        <template v-if="editingMcp.transport === 'http'">
+          <label>服务地址<input v-model="editingMcp.url" class="input" placeholder="如 https://mcp.example/mcp" /></label>
+          <label>请求头（JSON）<textarea v-model="editingMcp.headers" class="input mono" rows="2" :placeholder="editingMcp.id ? '已设置（留空不修改）' : '如：Authorization: Bearer xxx'"></textarea></label>
+        </template>
+        <template v-else>
+          <label>命令<input v-model="editingMcp.command" class="input" placeholder="如 npx / uvx" /></label>
+          <label>参数（JSON 数组）<textarea v-model="editingMcp.args" class="input mono" rows="2" placeholder='如 ["-y","@modelcontextprotocol/server-xxx"]'></textarea></label>
+          <label>环境变量（JSON）<textarea v-model="editingMcp.env" class="input mono" rows="2" placeholder='如 {"API_KEY":"xxx"}'></textarea></label>
+        </template>
+        <label>选用模式
+          <select v-model="editingMcp.mode" class="input">
+            <option v-for="mo in mcpModes" :key="mo.value" :value="mo.value">{{ mo.label }}</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" v-model="editingMcp.enabled" :true-value="1" :false-value="0" /> 启用</label>
+        <div v-if="editingMcp.tools.length" class="mcp-tools">
+          <strong>已发现工具：</strong>
+          <ul class="tools-list">
+            <li v-for="t in editingMcp.tools" :key="t.name">
+              <code>{{ t.name }}</code><span class="hint">{{ t.description || '' }}</span>
+            </li>
+          </ul>
+          <button v-if="editingMcp.id" class="btn btn-outline" @click="refreshMcpTools">刷新工具列表</button>
+        </div>
+        <div class="foot">
+          <button class="btn btn-outline" @click="editingMcp = null">取消</button>
+          <button class="btn" :disabled="savingMcp" @click="saveMcp">{{ savingMcp ? '保存中…' : '保存' }}</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="mcpTestTools" class="modal-mask" @click.self="mcpTestTools = null">
+      <div class="modal">
+        <h3>{{ mcpTestTools.name }} — 工具列表</h3>
+        <p v-if="mcpTestTools.error" class="msg">{{ mcpTestTools.error }}</p>
+        <ul v-if="mcpTestTools.tools.length" class="tools-list">
+          <li v-for="t in mcpTestTools.tools" :key="t.name">
+            <code>{{ t.name }}</code><span class="hint">{{ t.description || '' }}</span>
+          </li>
+        </ul>
+        <p v-if="!mcpTestTools.tools.length && !mcpTestTools.error" class="hint">未发现工具</p>
+        <div class="foot"><button class="btn" @click="mcpTestTools = null">关闭</button></div>
+      </div>
+    </div>
+
+    <div v-if="editingSkill" class="modal-mask" @click.self="editingSkill = null">
+      <div class="modal">
+        <h3>编辑技能包</h3>
+        <label>名称<input v-model="editingSkill.name" class="input" /></label>
+        <label>描述<textarea v-model="editingSkill.description" class="input" rows="2"></textarea></label>
+        <label>可见性
+          <select v-model="editingSkill.scope" class="input">
+            <option v-for="sc in skillScopes" :key="sc.value" :value="sc.value">{{ sc.label }}</option>
+          </select>
+        </label>
+        <template v-if="editingSkill.scope === 'user'">
+          <label>分配用户
+            <div class="kb-checkbox-list">
+              <label v-for="u in users" :key="u.id" class="check">
+                <input type="checkbox" :value="u.id" :checked="editingSkill.user_ids.includes(u.id)" @change="toggleSkillUser(u.id)" />
+                {{ u.nickname }}
+              </label>
+              <span v-if="!users.length" class="hint">暂无用户</span>
+            </div>
+          </label>
+        </template>
+        <label class="check"><input type="checkbox" v-model="editingSkill.enabled" :true-value="1" :false-value="0" /> 启用</label>
+        <div class="foot">
+          <button class="btn btn-outline" @click="editingSkill = null">取消</button>
+          <button class="btn" :disabled="savingSkill" @click="saveSkill">{{ savingSkill ? '保存中…' : '保存' }}</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="skillTest" class="modal-mask" @click.self="skillTest = null">
+      <div class="modal">
+        <h3>{{ skillTest.skill.name }} — 试运行工具</h3>
+        <label>工具
+          <select v-model="skillTest.tool" class="input">
+            <option v-for="t in skillTest.skill.tools" :key="t.name" :value="t.name">{{ t.name }}</option>
+          </select>
+        </label>
+        <label>参数（JSON）<textarea v-model="skillTest.args" class="input mono" rows="2" placeholder='如 {"file":"a.py"}'></textarea></label>
+        <button class="btn" :disabled="skillTest.loading" @click="runSkillTest">{{ skillTest.loading ? '运行中…' : '运行' }}</button>
+        <pre v-if="skillTest.output" class="skill-output">{{ skillTest.output }}</pre>
+        <div class="foot"><button class="btn" @click="skillTest = null">关闭</button></div>
+      </div>
+    </div>
+
+    <ConfirmDialog
+      :visible="confirmDlg.visible"
+      :title="confirmDlg.title"
+      :message="confirmDlg.message"
+      :danger="confirmDlg.danger"
+      @confirm="confirmDlg.confirm"
+      @cancel="confirmDlg.cancel"
+    />
   </div>
 </template>
 
@@ -1670,6 +2157,36 @@ onMounted(() => {
   color: var(--danger);
 }
 
+.ops {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-edit {
+  background: var(--primary);
+}
+
+.btn-edit:hover {
+  background: var(--primary-hover);
+}
+
+.btn-test {
+  background: #46a869;
+}
+
+.btn-test:hover {
+  background: #3c9a5c;
+}
+
+.btn-del {
+  background: var(--danger);
+}
+
+.btn-del:hover {
+  background: #c94440;
+}
+
 .empty {
   text-align: center;
   color: var(--text-muted);
@@ -1738,6 +2255,57 @@ onMounted(() => {
   flex-direction: column;
   gap: 4px;
   padding: 6px 0;
+}
+
+.mcp-tools {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.tools-list {
+  margin: 6px 0 8px;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.tools-list li code {
+  margin-right: 8px;
+  color: var(--primary);
+}
+
+.skill-upload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.skill-upload input[type='file'] {
+  font-size: 13px;
+}
+
+.skill-output {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
+  font-size: 13px;
 }
 
 .hint {

@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from .. import mcp as mcp_core
+from .. import skills as skill_core
 from .. import models, schemas
 from ..auth import get_current_user
 from ..common import build_content_parts, get_setting, parse_models
@@ -152,11 +154,44 @@ def chat(
                         {"role": "system", "content": context}
                     ] + current_messages
 
-            for round_index in range(2):
+            # 汇整 MCP 工具：默认（大模型选用）自动注入 + 会话前端选用的 MCP
+            mcp_servers = list(mcp_core.all_servers(db, mode="llm"))
+            selected_ids = mcp_core.parse_ids(conversation.mcp_ids)
+            if selected_ids:
+                mcp_servers.extend(
+                    mcp_core.resolve_servers(db, selected_ids, mode="frontend")
+                )
+            mcp_tools, mcp_mapping = await mcp_core.build_openai_tools(mcp_servers)
+
+            # 汇整技能：会话前端选用的技能（需用户可访问）
+            selected_skill_ids = skill_core.parse_ids(conversation.skill_ids)
+            if selected_skill_ids:
+                accessible = {s.id for s in skill_core.user_skills(db, user.id)}
+                skills = skill_core.resolve_skills_by_ids(
+                    db, [i for i in selected_skill_ids if i in accessible]
+                )
+            else:
+                skills = []
+            skill_system = [
+                {"role": "system", "content": s.content}
+                for s in skills
+                if s.content
+            ]
+            if skill_system:
+                current_messages = skill_system + current_messages
+            skill_tools, skill_mapping = skill_core.build_openai_tools(skills)
+
+            base_tools: list[dict] = []
+            if should_search:
+                base_tools.append(search_tool)
+            base_tools.extend(mcp_tools)
+            base_tools.extend(skill_tools)
+
+            for round_index in range(3):
                 body = {**request_body, "messages": current_messages}
-                if should_search:
-                    body["tools"] = [search_tool]
-                if round_index == 1:
+                if base_tools:
+                    body["tools"] = base_tools
+                if round_index >= 1:
                     body.pop("tools", None)
 
                 tool_calls_map = {}
@@ -215,28 +250,6 @@ def chat(
                 if not ready_calls:
                     break
 
-                yield f"data: {json.dumps({'status': 'searching'})}\n\n"
-
-                query = ""
-                try:
-                    args = json.loads(ready_calls[0]["arguments"] or "{}")
-                    query = args.get("query", "")
-                except Exception:
-                    query = ""
-                if not query:
-                    break
-
-                try:
-                    results = await search_web(
-                        search_provider,
-                        setting.search_api_key,
-                        setting.search_base_url,
-                        query,
-                    )
-                except Exception:
-                    results = []
-
-                tool_call_id = ready_calls[0]["id"] or "call_web_search"
                 tool_calls_payload = []
                 for i, c in enumerate(ready_calls):
                     tool_calls_payload.append(
@@ -249,18 +262,66 @@ def chat(
                             },
                         }
                     )
+
+                tool_messages: list[dict] = []
+                for c in ready_calls:
+                    name = c["name"]
+                    cid = c["id"] or "call_0"
+                    args: dict = {}
+                    try:
+                        args = json.loads(c["arguments"] or "{}")
+                    except Exception:
+                        args = {}
+                    if name == "web_search":
+                        yield f"data: {json.dumps({'status': 'searching'})}\n\n"
+                        query = args.get("query", "")
+                        try:
+                            results = await search_web(
+                                search_provider,
+                                setting.search_api_key,
+                                setting.search_base_url,
+                                query,
+                            )
+                            content = format_results(results)
+                        except Exception:
+                            content = ""
+                        tool_messages.append(
+                            {"role": "tool", "tool_call_id": cid, "content": content}
+                        )
+                    elif name in mcp_mapping:
+                        server, tool_name = mcp_mapping[name]
+                        yield f"data: {json.dumps({'status': 'tool', 'server': server.name})}\n\n"
+                        try:
+                            content = await mcp_core.call_tool(
+                                server, tool_name, args
+                            )
+                        except Exception as exc:
+                            content = f"工具调用失败：{exc}"
+                        tool_messages.append(
+                            {"role": "tool", "tool_call_id": cid, "content": content}
+                        )
+                    elif name in skill_mapping:
+                        skill, tool = skill_mapping[name]
+                        yield f"data: {json.dumps({'status': 'tool', 'server': skill.name})}\n\n"
+                        try:
+                            content = await skill_core.call_tool(skill, tool, args)
+                        except Exception as exc:
+                            content = f"技能调用失败：{exc}"
+                        tool_messages.append(
+                            {"role": "tool", "tool_call_id": cid, "content": content}
+                        )
+                    else:
+                        tool_messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": cid,
+                                "content": "该工具不可用，请重试。",
+                            }
+                        )
+
                 current_messages = current_messages + [
-                    {
-                        "role": "assistant",
-                        "content": None,
-                        "tool_calls": tool_calls_payload,
-                    },
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call_id,
-                        "content": format_results(results),
-                    },
-                ]
+                    {"role": "assistant", "content": None, "tool_calls": tool_calls_payload}
+                ] + tool_messages
         except Exception as exc:
             yield f"data: {json.dumps({'error': str(exc)})}\n\n"
 

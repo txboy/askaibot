@@ -48,16 +48,28 @@ class TokenResponse(BaseModel):
 class ConversationCreate(BaseModel):
     title: Optional[str] = "新对话"
     model: Optional[str] = ""
+    mcp_ids: Optional[str] = ""
+    skill_ids: Optional[str] = ""
 
 
 class ConversationUpdate(BaseModel):
     title: str
 
 
+class ConversationMcpUpdate(BaseModel):
+    mcp_ids: str
+
+
+class ConversationSkillUpdate(BaseModel):
+    skill_ids: str
+
+
 class ConversationOut(BaseModel):
     id: int
     title: str
     model: str
+    mcp_ids: str
+    skill_ids: str
     created_at: datetime
     updated_at: datetime
 
@@ -266,6 +278,8 @@ class WecomBotCreate(BaseModel):
     token: Optional[str] = ""
     aes_key: Optional[str] = ""
     kb_ids: Optional[str] = ""
+    mcp_ids: Optional[str] = ""
+    skill_ids: Optional[str] = ""
     web_search: Optional[int] = 0
     endpoint_id: Optional[int] = None
     model: Optional[str] = ""
@@ -280,6 +294,8 @@ class WecomBotUpdate(BaseModel):
     token: Optional[str] = None
     aes_key: Optional[str] = None
     kb_ids: Optional[str] = None
+    mcp_ids: Optional[str] = None
+    skill_ids: Optional[str] = None
     web_search: Optional[int] = None
     endpoint_id: Optional[int] = None
     model: Optional[str] = None
@@ -294,6 +310,8 @@ class WecomBotOut(BaseModel):
     token_masked: str
     aes_key_set: bool
     kb_ids: str
+    mcp_ids: str
+    skill_ids: str
     web_search: int
     endpoint_id: Optional[int] = None
     model: str
@@ -332,3 +350,100 @@ class SettingUpdate(BaseModel):
     wecom_secret: Optional[str] = None
     wecom_agent_id: Optional[str] = None
     wecom_redirect: Optional[str] = None
+
+
+class McpServerCreate(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    transport: Optional[str] = "http"
+    url: Optional[str] = ""
+    headers: Optional[str] = "{}"
+    command: Optional[str] = ""
+    args: Optional[str] = "[]"
+    env: Optional[str] = "{}"
+    mode: Optional[str] = "llm"
+    enabled: Optional[int] = 1
+
+
+class McpServerUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    transport: Optional[str] = None
+    url: Optional[str] = None
+    headers: Optional[str] = None
+    command: Optional[str] = None
+    args: Optional[str] = None
+    env: Optional[str] = None
+    mode: Optional[str] = None
+    enabled: Optional[int] = None
+
+
+class McpToolOut(BaseModel):
+    name: str
+    description: str
+    input_schema: dict
+
+
+class McpServerOut(BaseModel):
+    id: int
+    name: str
+    description: str
+    transport: str
+    url: str
+    headers_masked: str
+    command: str
+    args: str
+    env_set: bool
+    mode: str
+    enabled: int
+    tools: list[McpToolOut] = []
+
+    class Config:
+        from_attributes = True
+
+
+class McpServerPublic(BaseModel):
+    id: int
+    name: str
+    description: str
+    tool_count: int = 0
+
+
+class SkillToolOut(BaseModel):
+    name: str
+    description: str
+    command: str
+    input_schema: dict
+
+
+class SkillOut(BaseModel):
+    id: int
+    name: str
+    description: str
+    scope: str
+    enabled: int
+    tools: list[SkillToolOut] = []
+    user_ids: list[int] = []
+
+    class Config:
+        from_attributes = True
+
+
+class SkillUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    scope: Optional[str] = None
+    enabled: Optional[int] = None
+    user_ids: Optional[list[int]] = []
+
+
+class SkillPublic(BaseModel):
+    id: int
+    name: str
+    description: str
+    tools: list[SkillToolOut] = []
+
+
+class SkillTestRequest(BaseModel):
+    tool: str
+    args: dict = {}
