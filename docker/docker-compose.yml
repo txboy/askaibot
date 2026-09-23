@@ -1,0 +1,28 @@
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: chatbot-backend
+    restart: unless-stopped
+    environment:
+      - FRONTEND_URL=http://localhost
+      - JWT_SECRET=${JWT_SECRET:-change-this-super-secret-key-please-32bytes-min}
+    volumes:
+      - app_data:/app/data
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+    container_name: chatbot-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+volumes:
+  app_data:

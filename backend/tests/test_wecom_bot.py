@@ -1,0 +1,303 @@
+import asyncio
+import base64
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+import app.routers.wecom_bot as wecom_router
+import app.wecom_bot as bot_core
+import app.wecom_crypto as wc
+from app import models
+from app.database import Base
+
+AES_KEY = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG"
+
+
+@pytest.fixture
+def db():
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    yield session
+    session.close()
+
+
+def _bot(**overrides):
+    data = dict(
+        id=1,
+        name="客服机器人",
+        corp_id="corp123",
+        secret="secret",
+        agent_id="1000002",
+        token="token",
+        aes_key=AES_KEY,
+        kb_ids="",
+        web_search=0,
+        enabled=1,
+    )
+    data.update(overrides)
+    return models.WecomBot(**data)
+
+
+class FakeHttp:
+    def __init__(self, data):
+        self.posts = []
+        self.gets = []
+        self._data = data
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def post(self, url, **kwargs):
+        self.posts.append((url, kwargs))
+        return self._data
+
+    async def get(self, url, **kwargs):
+        self.gets.append((url, kwargs))
+        return self._data
+
+
+class FakeResp:
+    def __init__(self, json_data, status=200):
+        self._json = json_data
+        self.status_code = status
+
+    def json(self):
+        return self._json
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError("http error")
+
+
+def test_get_access_token_caches(monkeypatch):
+    class TokClient(FakeHttp):
+        pass
+
+    fake = TokClient(FakeResp({"errcode": 0, "access_token": "T", "expires_in": 7200}))
+    monkeypatch.setattr(bot_core.httpx, "AsyncClient", lambda *a, **k: fake)
+    assert asyncio.run(bot_core.get_access_token("c", "s")) == "T"
+    assert asyncio.run(bot_core.get_access_token("c", "s")) == "T"
+    assert len(fake.gets) == 1
+
+
+def test_get_access_token_error_raises(monkeypatch):
+    class ErrClient(FakeHttp):
+        pass
+
+    monkeypatch.setattr(
+        bot_core.httpx,
+        "AsyncClient",
+        lambda *a, **k: ErrClient(FakeResp({"errcode": 41001, "errmsg": "invalid"})),
+    )
+    with pytest.raises(RuntimeError):
+        asyncio.run(bot_core.get_access_token("c2", "s2"))
+
+
+def test_generate_reply_uses_endpoint_and_returns_content(monkeypatch, db):
+    ep = models.ApiEndpoint(
+        id=1,
+        name="ep",
+        base_url="https://api.example/v1",
+        api_key="k",
+        models="gpt-test",
+        enabled=1,
+    )
+    bot = _bot(endpoint_id=1, model="gpt-test")
+    user = models.User(id=1, nickname="u")
+    conversation = models.Conversation(id=1, user_id=1, bot_id=1, title="c")
+    db.add_all([ep, bot, user, conversation])
+    db.flush()
+    db.add(models.Message(conversation_id=1, role="user", content="你好"))
+    db.commit()
+
+    class LLMClient(FakeHttp):
+        def __init__(self):
+            super().__init__(
+                FakeResp(
+                    {
+                        "choices": [
+                            {"message": {"role": "assistant", "content": "你好呀"}}
+                        ]
+                    }
+                )
+            )
+
+    fake = LLMClient()
+    monkeypatch.setattr(bot_core.httpx, "AsyncClient", lambda *a, **k: fake)
+
+    reply = asyncio.run(bot_core.generate_reply(db, conversation, bot))
+    assert reply == "你好呀"
+    url, kwargs = fake.posts[0]
+    assert url == "https://api.example/v1/chat/completions"
+    assert kwargs["json"]["model"] == "gpt-test"
+    assert kwargs["json"]["stream"] is False
+    assert any(
+        m["role"] == "user" and m["content"] == "你好"
+        for m in kwargs["json"]["messages"]
+    )
+
+
+def test_receive_text_flow(db, monkeypatch):
+    bot = _bot()
+    db.add(bot)
+    db.commit()
+
+    xml = "<xml><ToUserName>corp123</ToUserName><FromUserName>zhangsan</FromUserName><MsgType>text</MsgType><Content>在吗？</Content></xml>"
+    enc_str = base64.b64encode(wc.encrypt_msg(xml, AES_KEY, "corp123")).decode()
+    body = f"<xml><Encrypt>{enc_str}</Encrypt></xml>".encode()
+    sig = wc.signature("token", "123", "nonce", enc_str)
+
+    replied = {}
+    sent = []
+
+    async def fake_reply(db, conversation, bot):
+        replied["conv"] = conversation.id
+        return "在的，请讲"
+
+    async def fake_send(touser, content, agent_id, corp_id, secret):
+        sent.append((touser, content))
+
+    monkeypatch.setattr(wecom_router.bot_core, "generate_reply", fake_reply)
+    monkeypatch.setattr(wecom_router.bot_core, "send_text", fake_send)
+
+    class FakeRequest:
+        async def body(self):
+            return body
+
+    async def run():
+        return await wecom_router.receive(
+            bot_id=1,
+            request=FakeRequest(),
+            msg_signature=sig,
+            timestamp="123",
+            nonce="nonce",
+            db=db,
+        )
+
+    resp = asyncio.run(run())
+    assert resp.status_code == 200
+
+    user = db.query(models.User).filter(models.User.wecom_userid == "zhangsan").first()
+    assert user is not None
+    conv = db.query(models.Conversation).filter(models.Conversation.bot_id == 1).first()
+    assert conv is not None
+    msgs = (
+        db.query(models.Message).filter(models.Message.conversation_id == conv.id).all()
+    )
+    assert [m.role for m in msgs] == ["user", "assistant"]
+    assert msgs[0].content == "在吗？"
+    assert msgs[1].content == "在的，请讲"
+    assert sent == [("zhangsan", "在的，请讲")]
+
+
+def test_receive_image_creates_attachment(db, monkeypatch):
+    bot = _bot()
+    db.add(bot)
+    db.commit()
+
+    xml = "<xml><ToUserName>corp123</ToUserName><FromUserName>lisi</FromUserName><MsgType>image</MsgType><MediaId>MEDIA123</MediaId></xml>"
+    enc_str = base64.b64encode(wc.encrypt_msg(xml, AES_KEY, "corp123")).decode()
+    body = f"<xml><Encrypt>{enc_str}</Encrypt></xml>".encode()
+    sig = wc.signature("token", "123", "nonce", enc_str)
+
+    async def fake_download(media_id, corp_id, secret):
+        return b"\xff\xd8\xff" + b"abc"
+
+    async def fake_reply(db, conversation, bot):
+        return "收到图片"
+
+    async def fake_send(*a, **k):
+        pass
+
+    monkeypatch.setattr(wecom_router.bot_core, "download_media", fake_download)
+    monkeypatch.setattr(wecom_router.bot_core, "generate_reply", fake_reply)
+    monkeypatch.setattr(wecom_router.bot_core, "send_text", fake_send)
+
+    class FakeRequest:
+        async def body(self):
+            return body
+
+    async def run():
+        return await wecom_router.receive(
+            bot_id=1,
+            request=FakeRequest(),
+            msg_signature=sig,
+            timestamp="123",
+            nonce="nonce",
+            db=db,
+        )
+
+    asyncio.run(run())
+    att = db.query(models.Attachment).first()
+    assert att is not None
+    assert att.kind == "image"
+    assert att.content_type == "image/jpeg"
+
+
+def test_receive_bad_signature_raises(db):
+    db.add(_bot())
+    db.commit()
+    enc_str = "xx"
+    body = f"<xml><Encrypt>{enc_str}</Encrypt></xml>".encode()
+
+    class FakeRequest:
+        async def body(self):
+            return body
+
+    with pytest.raises(Exception):
+        asyncio.run(
+            wecom_router.receive(
+                bot_id=1,
+                request=FakeRequest(),
+                msg_signature="bad",
+                timestamp="1",
+                nonce="2",
+                db=db,
+            )
+        )
+
+
+def test_receive_missing_bot_raises(db):
+    class FakeRequest:
+        async def body(self):
+            return b""
+
+    with pytest.raises(Exception):
+        asyncio.run(
+            wecom_router.receive(
+                bot_id=999,
+                request=FakeRequest(),
+                msg_signature="s",
+                timestamp="1",
+                nonce="2",
+                db=db,
+            )
+        )
+
+
+def test_verify_returns_echostr(db):
+    bot = _bot()
+    db.add(bot)
+    db.commit()
+    plain = "random-echo-string"
+    enc_str = base64.b64encode(wc.encrypt_msg(plain, AES_KEY, "corp123")).decode()
+    sig = wc.signature("token", "123", "nonce", enc_str)
+
+    resp = wecom_router.verify(
+        bot_id=1,
+        msg_signature=sig,
+        timestamp="123",
+        nonce="nonce",
+        echostr=enc_str,
+        db=db,
+    )
+    assert resp.body == plain.encode()

@@ -1,0 +1,40 @@
+# 依赖与构建产物
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# 运行时数据（用户数据、上传文件、SQLite 数据库）
+backend/app.db
+backend/data/
+docker/data/
+
+# 环境变量与密钥
+.env
+.env.*
+!.env.example
+
+# 日志与系统文件
+*.log
+logs/
+.DS_Store
+Thumbs.db
+
+# IDE / 编辑器
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

@@ -1,0 +1,111 @@
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- 徽章圆形裁剪区域 -->
+    <clipPath id="avatarClip">
+      <circle cx="256" cy="256" r="240" />
+    </clipPath>
+
+    <!-- 娃娃鱼身体的立体渐变色 -->
+    <linearGradient id="bodyGrad" x1="0" y1="80" x2="0" y2="500" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#8ba37d" />
+      <stop offset="100%" stop-color="#4e5d44" />
+    </linearGradient>
+  </defs>
+
+  <g clip-path="url(#avatarClip)">
+    <!-- 1. 背景底色 -->
+    <rect x="0" y="0" width="512" height="512" fill="#e0f7fa" />
+    
+    <!-- 2. 背景水波纹 -->
+    <path d="M -50 350 Q 128 310 256 350 T 550 350 L 550 550 L -50 550 Z" fill="#b2ebf2" />
+    <path d="M -50 400 Q 128 360 256 400 T 550 400 L 550 550 L -50 550 Z" fill="#80deea" />
+
+    <!-- 3. 背景水草 -->
+    <path d="M 40 500 Q 50 400 20 300 Q 40 300 50 400 Q 60 450 40 500 Z" fill="#4db6ac" opacity="0.6"/>
+    <path d="M 80 500 Q 70 420 100 350 Q 80 340 70 420 Q 60 460 80 500 Z" fill="#26a69a" opacity="0.6"/>
+    <path d="M 472 500 Q 462 400 492 300 Q 472 300 462 400 Q 452 450 472 500 Z" fill="#4db6ac" opacity="0.6"/>
+    <path d="M 432 500 Q 442 420 412 350 Q 432 340 442 420 Q 452 460 432 500 Z" fill="#26a69a" opacity="0.6"/>
+
+    <!-- 4. 气泡 -->
+    <g fill="#ffffff" opacity="0.6">
+      <circle cx="420" cy="150" r="10" />
+      <circle cx="440" cy="120" r="15" />
+      <circle cx="410" cy="90" r="6" />
+      <circle cx="80" cy="200" r="8" />
+      <circle cx="60" cy="160" r="12" />
+      <circle cx="90" cy="130" r="5" />
+    </g>
+
+    <!-- 5. 娃娃鱼的前爪 (画在身体下层) -->
+    <!-- 左前爪 -->
+    <path d="M 80 440 C 50 440, 30 470, 40 485 C 25 495, 35 510, 50 505 C 55 520, 75 520, 75 505 C 90 510, 105 500, 110 480 C 115 460, 100 440, 80 440 Z" fill="url(#bodyGrad)" stroke="#2a3325" stroke-width="4" stroke-linejoin="round"/>
+    <!-- 右前爪 -->
+    <path d="M 432 440 C 462 440, 482 470, 472 485 C 487 495, 477 510, 462 505 C 457 520, 437 520, 437 505 C 422 510, 407 500, 402 480 C 397 460, 412 440, 432 440 Z" fill="url(#bodyGrad)" stroke="#2a3325" stroke-width="4" stroke-linejoin="round"/>
+
+    <!-- 6. 娃娃鱼头部与身体轮廓 -->
+    <path d="M 256 80 C 420 80, 500 180, 500 320 L 500 500 L 12 500 L 12 320 C 12 180, 92 80, 256 80 Z" fill="url(#bodyGrad)" stroke="#2a3325" stroke-width="4" />
+    
+    <!-- 头顶高光 -->
+    <ellipse cx="256" cy="110" rx="100" ry="30" fill="#ffffff" opacity="0.15" />
+
+    <!-- 7. 皮肤斑点 -->
+    <g fill="#4a5344" opacity="0.6">
+      <path d="M 210 120 Q 225 100 240 120 Q 235 135 220 130 Z" />
+      <path d="M 265 110 Q 280 90 295 115 Q 285 130 270 125 Z" />
+      <path d="M 150 130 Q 165 110 180 135 Q 175 150 160 145 Z" />
+      <path d="M 330 140 Q 345 120 360 145 Q 355 160 340 155 Z" />
+      <path d="M 240 170 Q 255 150 270 170 Q 265 190 250 185 Z" />
+    </g>
+    <g fill="#4a5344" opacity="0.5">
+      <circle cx="110" cy="180" r="12" />
+      <circle cx="400" cy="190" r="14" />
+      <circle cx="140" cy="220" r="8" />
+      <circle cx="370" cy="230" r="10" />
+    </g>
+
+    <!-- 8. 脸颊肉褶皱 -->
+    <path d="M 30 330 Q 60 370 40 420" fill="none" stroke="#3a4233" stroke-width="5" stroke-linecap="round" opacity="0.5"/>
+    <path d="M 50 400 Q 80 440 70 470" fill="none" stroke="#3a4233" stroke-width="5" stroke-linecap="round" opacity="0.5"/>
+    <path d="M 482 330 Q 452 370 472 420" fill="none" stroke="#3a4233" stroke-width="5" stroke-linecap="round" opacity="0.5"/>
+    <path d="M 462 400 Q 432 440 442 470" fill="none" stroke="#3a4233" stroke-width="5" stroke-linecap="round" opacity="0.5"/>
+
+    <!-- 9. 腮红 -->
+    <ellipse cx="110" cy="260" rx="35" ry="18" fill="#ff8a80" opacity="0.5" transform="rotate(-15 110 260)"/>
+    <ellipse cx="402" cy="260" rx="35" ry="18" fill="#ff8a80" opacity="0.5" transform="rotate(15 402 260)"/>
+
+    <!-- 10. 眼睛部分 -->
+    <!-- 眼窝 -->
+    <circle cx="140" cy="200" r="20" fill="#3a4233" opacity="0.4" />
+    <circle cx="372" cy="200" r="20" fill="#3a4233" opacity="0.4" />
+    <!-- 黑眼珠 -->
+    <circle cx="140" cy="200" r="14" fill="#111" />
+    <circle cx="372" cy="200" r="14" fill="#111" />
+    <!-- 半睁的眼皮 (增加呆萌感) -->
+    <path d="M 124 200 A 16 16 0 0 1 156 200 Z" fill="#8ba37d" />
+    <path d="M 356 200 A 16 16 0 0 1 388 200 Z" fill="#8ba37d" />
+    <!-- 眼睛高光 -->
+    <circle cx="136" cy="205" r="4" fill="#fff" />
+    <circle cx="144" cy="208" r="2" fill="#fff" opacity="0.6"/>
+    <circle cx="368" cy="205" r="4" fill="#fff" />
+    <circle cx="376" cy="208" r="2" fill="#fff" opacity="0.6"/>
+
+    <!-- 11. 嘴巴 -->
+    <!-- 嘴巴外圈 -->
+    <path d="M 60 280 Q 256 340 452 280 Q 400 460 256 460 Q 112 460 60 280 Z" fill="#3e271f" stroke="#2a3325" stroke-width="4" stroke-linejoin="round"/>
+    <!-- 嘴巴内部阴影(上颚) -->
+    <path d="M 60 280 Q 256 340 452 280 Q 256 380 60 280 Z" fill="#1a0f0a" />
+    <!-- 舌头 -->
+    <path d="M 130 380 Q 256 350 382 380 Q 370 450 256 450 Q 142 450 130 380 Z" fill="#e57373" />
+    <!-- 舌头高光线 -->
+    <path d="M 256 370 L 256 440" fill="none" stroke="#ef9a9a" stroke-width="4" stroke-linecap="round" />
+
+    <!-- 12. 鼻孔 -->
+    <ellipse cx="240" cy="285" rx="5" ry="3" fill="#2a3325" />
+    <ellipse cx="272" cy="285" rx="5" ry="3" fill="#2a3325" />
+  </g>
+
+  <!-- 13. 头像徽章外框 -->
+  <circle cx="256" cy="256" r="240" fill="none" stroke="#00838f" stroke-width="8" />
+  <circle cx="256" cy="256" r="244" fill="none" stroke="#ffffff" stroke-width="4" />
+</svg>
