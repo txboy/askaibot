@@ -1647,7 +1647,7 @@ onMounted(() => {
       </main>
     </template>
 
-    <div v-if="editing" class="modal-mask" @click.self="editing = null">
+    <div v-if="editing" class="modal-mask">
       <div class="modal">
         <h3>{{ editing.id ? '编辑接口' : '添加接口' }}</h3>
         <label>名称<input v-model="editing.name" class="input" placeholder="如 OpenAI" /></label>
@@ -1663,7 +1663,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-if="editingKb" class="modal-mask" @click.self="editingKb = null">
+    <div v-if="editingKb" class="modal-mask">
       <div class="modal">
         <h3>{{ editingKb.id ? '编辑知识库' : '添加知识库' }}</h3>
         <label>名称<input v-model="editingKb.name" class="input" placeholder="如 内部文档" /></label>
@@ -1678,7 +1678,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-if="editingBot" class="modal-mask" @click.self="editingBot = null">
+    <div v-if="editingBot" class="modal-mask">
       <div class="modal">
         <h3>{{ editingBot.id ? '编辑机器人' : '添加机器人' }}</h3>
         <label>名称<input v-model="editingBot.name" class="input" placeholder="如 客服机器人" /></label>
@@ -1743,7 +1743,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-if="editingMcp" class="modal-mask" @click.self="editingMcp = null">
+    <div v-if="editingMcp" class="modal-mask">
       <div class="modal">
         <h3>{{ editingMcp.id ? '编辑 MCP 服务' : '添加 MCP 服务' }}</h3>
         <label>名称<input v-model="editingMcp.name" class="input" placeholder="如 天气服务" /></label>
@@ -1784,7 +1784,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-if="mcpTestTools" class="modal-mask" @click.self="mcpTestTools = null">
+    <div v-if="mcpTestTools" class="modal-mask">
       <div class="modal">
         <h3>{{ mcpTestTools.name }} — 工具列表</h3>
         <p v-if="mcpTestTools.error" class="msg">{{ mcpTestTools.error }}</p>
@@ -1798,7 +1798,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-if="editingSkill" class="modal-mask" @click.self="editingSkill = null">
+    <div v-if="editingSkill" class="modal-mask">
       <div class="modal">
         <h3>编辑技能包</h3>
         <label>名称<input v-model="editingSkill.name" class="input" /></label>
@@ -1827,7 +1827,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-if="skillTest" class="modal-mask" @click.self="skillTest = null">
+    <div v-if="skillTest" class="modal-mask">
       <div class="modal">
         <h3>{{ skillTest.skill.name }} — 试运行工具</h3>
         <label>工具
