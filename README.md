@@ -164,8 +164,23 @@ python reset_admin_secret.py
 
 说明：
 
-- 脚本读取环境变量 `DATABASE_URL`（默认 `sqlite:///./app.db`），与应用共用同一数据库；Docker 部署时可在容器内以相同数据库路径执行。
+- 脚本读取环境变量 `DATABASE_URL`（默认 `sqlite:///./app.db`），与应用共用同一数据库。
 - 重置后请在后台「系统设置 → 后台随机地址」中重新生成随机参数（如需再次启用）。
+
+### Docker 部署下清除后台随机地址
+
+Docker 部署时，`reset_admin_secret.py` 已随镜像拷贝进后端容器 `/app`，且容器内 `DATABASE_URL=sqlite:////app/data/app.db`（存于 `app_data` 卷），无需额外传参，直接在宿主机执行：
+
+```bash
+# 按容器名
+docker exec -it chatbot-backend python reset_admin_secret.py
+
+# 或按服务名
+docker compose exec backend python reset_admin_secret.py
+```
+
+- 容器名 `chatbot-backend`，服务名 `backend`（见 `docker/docker-compose.yml`）
+- 数据持久化于 `app_data` 卷（容器内 `/app/data`）；若卷被清空，随机地址设置也会一并丢失
 
 ---
 
