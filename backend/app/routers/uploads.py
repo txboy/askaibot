@@ -174,3 +174,10 @@ def get_dingtalk_enabled(db: Session = Depends(get_db)):
     setting = get_setting(db)
     real = bool(setting.dingtalk_app_key and setting.dingtalk_app_secret)
     return {"enabled": bool(real or setting.debug_mode)}
+
+
+@router.get("/config/feishu")
+def get_feishu_enabled(db: Session = Depends(get_db)):
+    setting = get_setting(db)
+    real = bool(setting.feishu_app_id and setting.feishu_app_secret)
+    return {"enabled": bool(real or setting.debug_mode)}

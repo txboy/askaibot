@@ -24,6 +24,9 @@ class User(Base):
     dingtalk_userid: Mapped[str | None] = mapped_column(
         String, unique=True, nullable=True, index=True
     )
+    feishu_userid: Mapped[str | None] = mapped_column(
+        String, unique=True, nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
@@ -74,6 +77,9 @@ class Setting(Base):
     dingtalk_app_secret: Mapped[str] = mapped_column(String, default="")
     dingtalk_agent_id: Mapped[str] = mapped_column(String, default="")
     dingtalk_redirect: Mapped[str] = mapped_column(String, default="")
+    feishu_app_id: Mapped[str] = mapped_column(String, default="")
+    feishu_app_secret: Mapped[str] = mapped_column(String, default="")
+    feishu_redirect: Mapped[str] = mapped_column(String, default="")
     logo_path: Mapped[str] = mapped_column(String, default="")
     favicon_path: Mapped[str] = mapped_column(String, default="")
     site_title: Mapped[str] = mapped_column(String, default="askai")

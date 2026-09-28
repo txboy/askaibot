@@ -30,11 +30,25 @@ const dingtalkEnabled = ref(false)
 const inDingtalkApp = ref(false)
 const dingtalkCorpId = ref('')
 
+const feishuMode = ref('')
+const feishuLoginUrl = ref('')
+const feishuQrUrl = ref('')
+const feishuEnabled = ref(false)
+const inFeishuApp = ref(false)
+
 function detectDingtalk() {
   if (typeof window === 'undefined') return false
   if (window.dd && window.dd.runtime) return true
   const ua = navigator.userAgent || ''
   return /DingTalk/i.test(ua) || /dingtalk/i.test(ua)
+}
+
+function detectFeishu() {
+  if (typeof window === 'undefined') return false
+  if (window.h5 && window.h5.getAuthCode) return true
+  if (window.tt && window.tt.requestAuthCode) return true
+  const ua = navigator.userAgent || ''
+  return /Feishu|Lark/i.test(ua) || /feishu/i.test(ua) || /lark/i.test(ua)
 }
 
 onMounted(async () => {
@@ -65,12 +79,18 @@ onMounted(async () => {
     const d = await api.getDingtalk()
     dingtalkEnabled.value = !!d.enabled
   } catch {}
+  try {
+    const f = await api.getFeishu()
+    feishuEnabled.value = !!f.enabled
+  } catch {}
   inDingtalkApp.value = detectDingtalk()
+  inFeishuApp.value = detectFeishu()
 
   if (phoneEnabled.value) tab.value = 'phone'
   else if (wecomEnabled.value) tab.value = 'wecom'
   else if (dingtalkEnabled.value) tab.value = 'dingtalk'
-  if (!phoneEnabled.value && !wecomEnabled.value && !dingtalkEnabled.value) {
+  else if (feishuEnabled.value) tab.value = 'feishu'
+  if (!phoneEnabled.value && !wecomEnabled.value && !dingtalkEnabled.value && !feishuEnabled.value) {
     msg.value = '暂无可用登录方式，请联系管理员配置'
     return
   }
@@ -98,6 +118,18 @@ onMounted(async () => {
       }
     } catch (e) {
       msg.value = '加载钉钉登录失败: ' + e.message
+    }
+  }
+  if (feishuEnabled.value) {
+    try {
+      const r = await api.feishuQrcode()
+      feishuMode.value = r.mode
+      if (r.mode !== 'disabled') {
+        feishuLoginUrl.value = r.login_url
+        feishuQrUrl.value = await QRCode.toDataURL(r.login_url, { margin: 1, width: 180, color: { dark: '#3b2c22', light: '#ffffff' } })
+      }
+    } catch (e) {
+      msg.value = '加载飞书登录失败: ' + e.message
     }
   }
 })
@@ -165,6 +197,36 @@ async function dingtalkFreeLogin() {
     },
   })
 }
+
+function feishuLogin() {
+  window.location.href = feishuLoginUrl.value
+}
+
+async function feishuFreeLogin() {
+  const h5 = window.h5 && window.h5.getAuthCode ? window.h5 : null
+  const tt = window.tt && window.tt.requestAuthCode ? window.tt : null
+  if (!h5 && !tt) return feishuLogin()
+  loggingIn.value = true
+  msg.value = ''
+  const onSuccess = async (res) => {
+    try {
+      const code = res.code || res.authCode || ''
+      const r = await api.feishuFreeLogin(code)
+      store.setAuth(r.token, r.user)
+      router.replace('/')
+    } catch (e) {
+      msg.value = e.message
+    } finally {
+      loggingIn.value = false
+    }
+  }
+  const onFail = () => {
+    loggingIn.value = false
+    feishuLogin()
+  }
+  if (h5) return h5.getAuthCode({ onSuccess, onFail })
+  return tt.requestAuthCode({ onSuccess, onFail })
+}
 </script>
 
 <template>
@@ -175,9 +237,10 @@ async function dingtalkFreeLogin() {
       </div>
 
       <div class="tabs">
-        <button v-if="phoneEnabled" :class="{ active: tab === 'phone' }" @click="tab = 'phone'">手机号登录</button>
-        <button v-if="wecomEnabled" :class="{ active: tab === 'wecom' }" @click="tab = 'wecom'">企业微信登录</button>
+        <button v-if="phoneEnabled" :class="{ active: tab === 'phone' }" @click="tab = 'phone'">手机登录</button>
+        <button v-if="wecomEnabled" :class="{ active: tab === 'wecom' }" @click="tab = 'wecom'">企微登录</button>
         <button v-if="dingtalkEnabled" :class="{ active: tab === 'dingtalk' }" @click="tab = 'dingtalk'">钉钉登录</button>
+        <button v-if="feishuEnabled" :class="{ active: tab === 'feishu' }" @click="tab = 'feishu'">飞书登录</button>
       </div>
 
       <div v-if="tab === 'phone' && phoneEnabled" class="panel">
@@ -222,6 +285,25 @@ async function dingtalkFreeLogin() {
           <p class="tip">{{ dingtalkMode === 'real' ? '使用钉钉扫一扫登录' : '当前为模拟模式，点击下方按钮体验登录' }}</p>
           <button class="btn full" @click="dingtalkLogin">
             {{ dingtalkMode === 'real' ? '打开钉钉授权' : '模拟扫码登录' }}
+          </button>
+        </template>
+      </div>
+
+      <div v-else-if="tab === 'feishu' && feishuEnabled" class="panel wecom-panel">
+        <template v-if="feishuMode === 'disabled'">
+          <p class="tip">飞书登录未配置或调试未开启</p>
+        </template>
+        <template v-else-if="inFeishuApp">
+          <p class="tip">检测到飞书环境，使用飞书一键登录</p>
+          <button class="btn full" :disabled="loggingIn" @click="feishuFreeLogin">
+            {{ loggingIn ? '登录中…' : '飞书一键登录' }}
+          </button>
+        </template>
+        <template v-else>
+          <img v-if="feishuQrUrl" :src="feishuQrUrl" class="qr" alt="飞书登录二维码" />
+          <p class="tip">{{ feishuMode === 'real' ? '使用飞书授权登录' : '当前为模拟模式，点击下方按钮体验登录' }}</p>
+          <button class="btn full" @click="feishuLogin">
+            {{ feishuMode === 'real' ? '打开飞书授权' : '模拟扫码登录' }}
           </button>
         </template>
       </div>

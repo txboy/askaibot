@@ -237,6 +237,40 @@ def update_dingtalk(
     return _dingtalk_out(setting)
 
 
+def _feishu_out(setting: models.Setting) -> schemas.FeishuOut:
+    return schemas.FeishuOut(
+        app_id=setting.feishu_app_id or "",
+        redirect=setting.feishu_redirect or "",
+        app_secret_set=bool(setting.feishu_app_secret),
+    )
+
+
+@router.get("/feishu", response_model=schemas.FeishuOut)
+def get_feishu(
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    return _feishu_out(get_setting(db))
+
+
+@router.put("/feishu", response_model=schemas.FeishuOut)
+def update_feishu(
+    payload: schemas.FeishuUpdate,
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    setting = get_setting(db)
+    if payload.app_id is not None:
+        setting.feishu_app_id = payload.app_id
+    if payload.app_secret:
+        setting.feishu_app_secret = payload.app_secret
+    if payload.redirect is not None:
+        setting.feishu_redirect = payload.redirect
+    db.commit()
+    db.refresh(setting)
+    return _feishu_out(setting)
+
+
 @router.get("/search", response_model=schemas.SearchOut)
 def get_search(
     admin: models.Admin = Depends(get_current_admin),
@@ -436,6 +470,9 @@ def _bot_callback_url(db: Session, bot_id: int, provider: str = "wecom") -> str:
     if provider == "dingtalk":
         base = (get_setting(db).dingtalk_redirect or config.frontend_url).rstrip("/")
         return f"{base}/api/dingtalk/bot/{bot_id}/callback"
+    if provider == "feishu":
+        base = (get_setting(db).feishu_redirect or config.frontend_url).rstrip("/")
+        return f"{base}/api/feishu/bot/{bot_id}/callback"
     base = (get_setting(db).wecom_redirect or config.frontend_url).rstrip("/")
     return f"{base}/api/wecom/bot/{bot_id}/callback"
 

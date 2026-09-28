@@ -11,6 +11,7 @@ from .routers import (
     conversations,
     dingtalk_bot,
     endpoints,
+    feishu_bot,
     uploads,
     wecom_bot,
 )
@@ -106,6 +107,15 @@ def _ensure_columns() -> None:
             if name not in cols:
                 with engine.begin() as conn:
                     conn.execute(text(f"ALTER TABLE settings ADD COLUMN {name} {ddl}"))
+        feishu_settings = {
+            "feishu_app_id": "VARCHAR DEFAULT ''",
+            "feishu_app_secret": "VARCHAR DEFAULT ''",
+            "feishu_redirect": "VARCHAR DEFAULT ''",
+        }
+        for name, ddl in feishu_settings.items():
+            if name not in cols:
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE settings ADD COLUMN {name} {ddl}"))
     if "users" in insp.get_table_names():
         ucols = {c["name"] for c in insp.get_columns("users")}
         for name, ddl in {
@@ -120,6 +130,9 @@ def _ensure_columns() -> None:
                 conn.execute(
                     text("ALTER TABLE users ADD COLUMN dingtalk_userid VARCHAR")
                 )
+        if "feishu_userid" not in ucols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE users ADD COLUMN feishu_userid VARCHAR"))
     if "messages" in insp.get_table_names():
         cols = {c["name"] for c in insp.get_columns("messages")}
         if "tokens" not in cols:
@@ -226,6 +239,7 @@ app.include_router(admin.router, prefix="/api")
 app.include_router(endpoints.router, prefix="/api")
 app.include_router(wecom_bot.router, prefix="/api")
 app.include_router(dingtalk_bot.router, prefix="/api")
+app.include_router(feishu_bot.router, prefix="/api")
 app.include_router(mcp_router.router, prefix="/api")
 app.include_router(skills_router.router, prefix="/api")
 

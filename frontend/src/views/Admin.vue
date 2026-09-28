@@ -26,6 +26,7 @@ const navItems = [
   { key: 'knowledge', label: '知识库' },
   { key: 'wecom', label: '企微设置' },
   { key: 'dingtalk', label: '钉钉设置' },
+  { key: 'feishu', label: '飞书设置' },
   { key: 'system', label: '系统设置' },
   { key: 'password', label: '修改密码' },
 ]
@@ -53,6 +54,13 @@ const dingtalkRedirect = ref('')
 const dingtalkSecretSet = ref(false)
 const dingtalkMsg = ref('')
 const savingDingtalk = ref(false)
+
+const feishuAppId = ref('')
+const feishuSecret = ref('')
+const feishuRedirect = ref('')
+const feishuSecretSet = ref(false)
+const feishuMsg = ref('')
+const savingFeishu = ref(false)
 
 const logoFile = ref(null)
 const logoPreview = ref('')
@@ -195,7 +203,7 @@ async function doLogin() {
 
 async function load() {
   try {
-    await Promise.all([loadEndpoints(), loadWecom(), loadDingtalk(), loadLogo(), loadStats(), loadUsers(), loadEndpointsUsage(), loadTheme(), loadDebug(), loadSms(), loadSystem(), loadKbs(), loadBots('wecom'), loadMcps(), loadSkills()])
+    await Promise.all([loadEndpoints(), loadWecom(), loadDingtalk(), loadFeishu(), loadLogo(), loadStats(), loadUsers(), loadEndpointsUsage(), loadTheme(), loadDebug(), loadSms(), loadSystem(), loadKbs(), loadBots('wecom'), loadMcps(), loadSkills()])
   } catch (e) {
     if (String(e.message).includes('401') || String(e.message).includes('管理员')) {
       logout()
@@ -217,7 +225,8 @@ async function selectSection(key) {
     else if (key === 'skill') await loadSkills()
     else if (key === 'knowledge') await loadKbs()
     else if (key === 'wecom') { await loadWecom(); await loadBots('wecom') }
-    else if (key === 'dingtalk') await loadBots('dingtalk')
+    else if (key === 'dingtalk') { await loadDingtalk(); await loadBots('dingtalk') }
+    else if (key === 'feishu') { await loadFeishu(); await loadBots('feishu') }
     else if (key === 'system') await loadSystem()
   } catch (e) {
     if (String(e.message).includes('401') || String(e.message).includes('管理员')) {
@@ -667,6 +676,7 @@ const botModelOptions = computed(() => {
 })
 
 const botIsDingtalk = computed(() => (editingBot.value?.provider || 'wecom') === 'dingtalk')
+const botIsFeishu = computed(() => (editingBot.value?.provider || 'wecom') === 'feishu')
 
 function toggleBotKb(kbId) {
   const arr = editingBot.value.kb_ids
@@ -1028,6 +1038,37 @@ async function saveDingtalk() {
     dingtalkMsg.value = e.message
   } finally {
     savingDingtalk.value = false
+  }
+}
+
+async function loadFeishu() {
+  try {
+    const d = await api.adminGetFeishu()
+    feishuAppId.value = d.app_id
+    feishuRedirect.value = d.redirect
+    feishuSecretSet.value = d.app_secret_set
+  } catch {
+    feishuMsg.value = '加载飞书配置失败'
+  }
+}
+
+async function saveFeishu() {
+  savingFeishu.value = true
+  feishuMsg.value = ''
+  try {
+    const body = {
+      app_id: feishuAppId.value,
+      redirect: feishuRedirect.value,
+    }
+    if (feishuSecret.value) body.app_secret = feishuSecret.value
+    await api.adminSaveFeishu(body)
+    feishuSecret.value = ''
+    feishuMsg.value = '已保存'
+    await loadFeishu()
+  } catch (e) {
+    feishuMsg.value = e.message
+  } finally {
+    savingFeishu.value = false
   }
 }
 
@@ -1633,6 +1674,63 @@ onMounted(() => {
           </p>
         </section>
 
+        <section v-else-if="active === 'feishu'" class="content">
+          <h2>飞书设置</h2>
+
+          <h3 class="section-title">基础配置</h3>
+          <div class="card">
+            <div class="wecom-grid">
+              <label>AppID<input v-model="feishuAppId" class="input" placeholder="飞书应用 AppID（cli_ 开头）" /></label>
+              <label>AppSecret<input v-model="feishuSecret" type="password" class="input" :placeholder="feishuSecretSet ? '已设置（留空不修改）' : '飞书应用 AppSecret'" /></label>
+              <label>回调域名<input v-model="feishuRedirect" class="input" placeholder="如 https://your.domain" /></label>
+            </div>
+            <div class="card-foot">
+              <p v-if="feishuMsg" class="hint">{{ feishuMsg }}</p>
+              <button class="btn" :disabled="savingFeishu" @click="saveFeishu">{{ savingFeishu ? '保存中…' : '保存飞书配置' }}</button>
+            </div>
+          </div>
+
+          <h3 class="section-title">机器人</h3>
+          <div class="head">
+            <span></span>
+            <button class="btn" @click="openBotCreate('feishu')">＋ 添加机器人</button>
+          </div>
+          <p v-if="botMsg" class="msg">{{ botMsg }}</p>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>AppID</th>
+                <th>联网</th>
+                <th>知识库</th>
+                <th>MCP</th>
+                <th>启用</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="b in bots" :key="b.id">
+                <td>{{ b.name }}</td>
+                <td class="mono">{{ b.corp_id }}</td>
+                <td>{{ b.web_search ? '✓' : '✕' }}</td>
+                <td>{{ b.kb_ids || '—' }}</td>
+                <td>{{ b.mcp_ids || '—' }}</td>
+                <td>{{ b.enabled ? '✓' : '✕' }}</td>
+                <td class="ops">
+                  <button class="btn btn-edit" @click="openBotEdit(b)">编辑</button>
+                  <button class="btn btn-del" @click="delBot(b)">删除</button>
+                </td>
+              </tr>
+              <tr v-if="!bots.length">
+                <td colspan="7" class="empty">暂无飞书机器人，点击「添加机器人」创建</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="hint" style="margin-top: 10px">
+            每个飞书机器人对应飞书的一个自建应用。请在飞书开发者后台开启「机器人」能力并在「事件订阅」中填该机器人的回调 URL（编辑弹窗内显示），订阅 im.message.receive_v1，并按需填写校验 Token 与 EncryptKey。
+          </p>
+        </section>
+
         <section v-else-if="active === 'system'" class="content">
           <h2>系统设置</h2>
 
@@ -1846,11 +1944,11 @@ onMounted(() => {
         <h3>{{ editingBot.id ? '编辑机器人' : '添加机器人' }}</h3>
         <label>名称<input v-model="editingBot.name" class="input" placeholder="如 客服机器人" /></label>
         <div class="form-2">
-          <label>{{ botIsDingtalk ? 'AppKey' : 'CorpID' }}<input v-model="editingBot.corp_id" class="input" :placeholder="botIsDingtalk ? '钉钉应用 AppKey' : '留空使用企微设置中的 CorpID'" /></label>
-          <label>{{ botIsDingtalk ? 'AppSecret' : '应用 Secret' }}<input v-model="editingBot.secret" type="password" class="input" :placeholder="editingBot.id ? '留空不修改' : (botIsDingtalk ? '钉钉应用 AppSecret' : '应用 Secret')" /></label>
-          <label>AgentId<input v-model="editingBot.agent_id" class="input" :placeholder="botIsDingtalk ? '钉钉应用 AgentId' : '应用 AgentId'" /></label>
-          <label>Token<input v-model="editingBot.token" type="password" class="input" :placeholder="editingBot.id ? (editingBot.token_masked || '已设置（留空不修改）') : '回调 Token'" /></label>
-          <label>EncodingAESKey<input v-model="editingBot.aes_key" type="password" class="input" :placeholder="editingBot.id ? '已设置（留空不修改）' : 'EncodingAESKey'" /></label>
+          <label>{{ botIsDingtalk ? 'AppKey' : botIsFeishu ? 'AppID' : 'CorpID' }}<input v-model="editingBot.corp_id" class="input" :placeholder="botIsDingtalk ? '钉钉应用 AppKey' : botIsFeishu ? '飞书应用 AppID' : '留空使用企微设置中的 CorpID'" /></label>
+          <label>{{ botIsDingtalk ? 'AppSecret' : botIsFeishu ? 'AppSecret' : '应用 Secret' }}<input v-model="editingBot.secret" type="password" class="input" :placeholder="editingBot.id ? '留空不修改' : (botIsDingtalk ? '钉钉应用 AppSecret' : botIsFeishu ? '飞书应用 AppSecret' : '应用 Secret')" /></label>
+          <label v-if="!botIsFeishu">AgentId<input v-model="editingBot.agent_id" class="input" :placeholder="botIsDingtalk ? '钉钉应用 AgentId' : '应用 AgentId'" /></label>
+          <label>{{ botIsDingtalk || botIsFeishu ? 'URL 验证 Token' : 'Token' }}<input v-model="editingBot.token" type="password" class="input" :placeholder="editingBot.id ? (editingBot.token_masked || '已设置（留空不修改）') : (botIsFeishu ? '校验 Token（选填）' : '回调 Token')" /></label>
+          <label>{{ botIsFeishu ? 'EncryptKey' : botIsDingtalk ? 'EncodingAESKey' : 'EncodingAESKey' }}<input v-model="editingBot.aes_key" type="password" class="input" :placeholder="editingBot.id ? '已设置（留空不修改）' : (botIsFeishu ? 'Encrypt Key（选填）' : 'EncodingAESKey')" /></label>
         </div>
         <label>接口
           <select v-model="editingBot.endpoint_id" class="input">
@@ -1898,7 +1996,7 @@ onMounted(() => {
         <p v-if="editingBot.id" class="hint" style="margin-top: 8px">
           回调地址：<code>{{ editingBot.callback_url }}</code>
         </p>
-        <p v-if="!editingBot.id" class="hint" style="margin-top: 8px">保存后可在此查看回调地址，填入{{ botIsDingtalk ? '钉钉' : '企微' }}后台。</p>
+        <p v-if="!editingBot.id" class="hint" style="margin-top: 8px">保存后可在此查看回调地址，填入{{ botIsDingtalk ? '钉钉' : botIsFeishu ? '飞书' : '企微' }}后台。</p>
         <div class="foot">
           <button class="btn btn-outline" @click="editingBot = null">取消</button>
           <button class="btn" :disabled="savingBot" @click="saveBot">{{ savingBot ? '保存中…' : '保存' }}</button>

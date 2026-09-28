@@ -17,6 +17,10 @@ class DingtalkCodeRequest(BaseModel):
     code: str
 
 
+class FeishuCodeRequest(BaseModel):
+    code: str
+
+
 class NicknameUpdate(BaseModel):
     nickname: str
 
@@ -186,6 +190,18 @@ class DingtalkUpdate(BaseModel):
     app_key: Optional[str] = None
     app_secret: Optional[str] = None
     agent_id: Optional[str] = None
+    redirect: Optional[str] = None
+
+
+class FeishuOut(BaseModel):
+    app_id: str
+    redirect: str
+    app_secret_set: bool
+
+
+class FeishuUpdate(BaseModel):
+    app_id: Optional[str] = None
+    app_secret: Optional[str] = None
     redirect: Optional[str] = None
 
 
