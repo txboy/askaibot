@@ -5,9 +5,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import app.routers.admin as admin_mod
-import app.routers.chat as chat_mod
-import app.mcp as mcp_core
+import app.controllers.admin as admin_mod
+import app.controllers.frontend.chat as chat_mod
+import app.services.mcp as mcp_core
 from app import models, schemas
 from app.database import Base
 

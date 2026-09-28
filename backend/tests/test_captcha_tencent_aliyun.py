@@ -1,5 +1,5 @@
 from app import models, schemas
-import app.captcha as captcha_mod
+import app.services.captcha as captcha_mod
 
 
 # ---------------- tencent ----------------

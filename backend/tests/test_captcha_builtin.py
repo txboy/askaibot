@@ -7,8 +7,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app import models, schemas
-import app.captcha as captcha_mod
-import app.routers.auth as auth_mod
+import app.services.captcha as captcha_mod
+import app.controllers.frontend.auth as auth_mod
 from app.database import Base
 
 

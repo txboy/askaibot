@@ -9,12 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
-from .. import captcha as captcha_mod
-from ..auth import create_token, get_current_user
-from ..common import get_setting
-from ..config import config
-from ..database import get_db
+from app import models, schemas
+from app.services import captcha as captcha_mod
+from app.auth import create_token, get_current_user
+from app.common import get_setting
+from app.config import config
+from app.database import get_db
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -65,7 +65,7 @@ def sms_send(payload: schemas.SMSRequest, db: Session = Depends(get_db)):
         "sent_at": now,
     }
     try:
-        from ..sms import send_sms
+        from app.services.sms import send_sms
 
         send_sms(setting, payload.phone, code)
     except Exception as exc:

@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import app.routers.admin as admin_mod
+import app.controllers.admin as admin_mod
 from app import models, schemas
 from app.database import Base
 from app.security import hash_password, verify_password

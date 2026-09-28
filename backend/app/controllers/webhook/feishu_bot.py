@@ -5,11 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from .. import feishu_bot as fs_core
-from .. import feishu_crypto as fc
-from .. import models
-from ..database import get_db
-from ..wecom_bot import generate_reply
+from app.services import feishu_bot as fs_core
+from app.services import feishu_crypto as fc
+from app import models
+from app.database import get_db
+from app.services.wecom_bot import generate_reply
 
 router = APIRouter(prefix="/feishu/bot", tags=["feishu-bot"])
 

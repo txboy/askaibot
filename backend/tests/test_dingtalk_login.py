@@ -4,8 +4,8 @@ from fastapi import HTTPException
 from fastapi.responses import RedirectResponse
 
 from app import models, schemas
-import app.routers.auth as auth_mod
-from app.routers.auth import (
+import app.controllers.frontend.auth as auth_mod
+from app.controllers.frontend.auth import (
     dingtalk_callback,
     dingtalk_free_login,
     dingtalk_oauth,

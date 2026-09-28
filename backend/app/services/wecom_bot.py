@@ -6,12 +6,12 @@ import time
 import httpx
 from sqlalchemy.orm import Session
 
-from . import mcp as mcp_core
-from . import skills as skill_core
-from . import models
-from .common import build_content_parts, get_setting, parse_models
-from .kb import build_openai_tools, format_kb_context, retrieve_kb
-from .search import format_results, search_web
+from app.services import mcp as mcp_core
+from app.services import skills as skill_core
+from app import models
+from app.common import build_content_parts, get_setting, parse_models
+from app.services.kb import build_openai_tools, format_kb_context, retrieve_kb
+from app.services.search import format_results, search_web
 
 _token_cache: dict[str, tuple[str, float]] = {}
 

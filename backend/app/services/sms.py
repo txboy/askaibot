@@ -1,6 +1,6 @@
 import json
 
-from . import models
+from app import models
 
 
 def _aliyun_send(setting: models.Setting, phone: str, code: str) -> None:

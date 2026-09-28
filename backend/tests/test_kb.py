@@ -5,10 +5,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import app.kb as kb_mod
-import app.routers.admin as admin_mod
-import app.routers.chat as chat_mod
-import app.routers.endpoints as endpoints_mod
+import app.services.kb as kb_mod
+import app.controllers.admin as admin_mod
+import app.controllers.admin.knowledge_bases as kb_admin_mod
+import app.controllers.frontend.chat as chat_mod
+import app.controllers.frontend.endpoints as endpoints_mod
 from app import models, schemas
 from app.database import Base
 
@@ -294,7 +295,7 @@ def test_admin_test_kb(monkeypatch, db):
         )
         return [{"title": "T", "content": "C", "source": "S"}]
 
-    monkeypatch.setattr(admin_mod, "retrieve_kb", fake_retrieve)
+    monkeypatch.setattr(kb_admin_mod, "retrieve_kb", fake_retrieve)
     res = asyncio.run(
         admin_mod.test_knowledge_base(
             payload=schemas.KnowledgeBaseTestRequest(

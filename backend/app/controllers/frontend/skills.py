@@ -3,10 +3,10 @@ import json
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from .. import skills as skill_core
-from .. import models, schemas
-from ..auth import get_current_user
-from ..database import get_db
+from app.services import skills as skill_core
+from app import models, schemas
+from app.auth import get_current_user
+from app.database import get_db
 
 router = APIRouter(prefix="/skills", tags=["skills"])
 

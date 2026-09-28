@@ -3,8 +3,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import app.routers.admin as admin_mod
-import app.search as search_mod
+import app.controllers.admin as admin_mod
+import app.controllers.admin.search as admin_search_mod
+import app.services.search as search_mod
 from app import models, schemas
 from app.database import Base
 
@@ -67,9 +68,7 @@ def test_tavily(monkeypatch):
     monkeypatch.setattr(search_mod.httpx, "AsyncClient", FakeClient)
     import asyncio
 
-    results = asyncio.run(
-        search_mod.search_web("tavily", "key", "", "hello")
-    )
+    results = asyncio.run(search_mod.search_web("tavily", "key", "", "hello"))
     assert results and results[0]["title"] == "T"
 
 
@@ -105,7 +104,7 @@ def test_admin_search_get(monkeypatch):
     setting.search_base_url = ""
     setting.search_auto = 1
     setting.search_api_key = "secret"
-    monkeypatch.setattr(admin_mod, "get_setting", lambda db: setting)
+    monkeypatch.setattr(admin_search_mod, "get_setting", lambda db: setting)
     out = admin_mod.get_search(admin=None, db=None)
     assert out.provider == "tavily"
     assert out.auto is True
@@ -122,7 +121,7 @@ def test_admin_search_put(monkeypatch):
     setting = models.Setting(id=1)
     db.add(setting)
     db.commit()
-    monkeypatch.setattr(admin_mod, "get_setting", lambda db: setting)
+    monkeypatch.setattr(admin_search_mod, "get_setting", lambda db: setting)
     out = admin_mod.update_search(
         payload=schemas.SearchUpdate(
             provider="bing", api_key="newkey", base_url="https://x", auto=True

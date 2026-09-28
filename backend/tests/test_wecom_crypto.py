@@ -3,7 +3,7 @@ import hashlib
 
 import pytest
 
-import app.wecom_crypto as wc
+import app.services.wecom_crypto as wc
 
 
 AES_KEY = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG"  # 43 chars -> 32 byte key

@@ -6,9 +6,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import app.dingtalk_bot as dt_core
-import app.routers.dingtalk_bot as dt_router
-import app.wecom_crypto as wc
+import app.services.dingtalk_bot as dt_core
+import app.controllers.webhook.dingtalk_bot as dt_router
+import app.services.wecom_crypto as wc
 from app import models
 from app.database import Base
 

@@ -1,9 +1,9 @@
 import pytest
 from fastapi import HTTPException
 
-import app.routers.uploads as upload_mod
+import app.controllers.frontend.uploads as upload_mod
 from app import models
-from app.routers.uploads import get_default_assistant_avatar, get_site
+from app.controllers.frontend.uploads import get_default_assistant_avatar, get_site
 
 
 @pytest.fixture

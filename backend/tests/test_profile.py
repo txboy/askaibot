@@ -7,9 +7,9 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app import models
-import app.routers.auth as auth_mod
+import app.controllers.frontend.auth as auth_mod
 from app.database import Base
-from app.routers.auth import update_phone, update_profile
+from app.controllers.frontend.auth import update_phone, update_profile
 
 
 @pytest.fixture

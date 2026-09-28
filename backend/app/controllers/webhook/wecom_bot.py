@@ -9,10 +9,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from .. import models, wecom_crypto as wc, wecom_bot as bot_core
-from ..common import get_setting
-from ..config import config
-from ..database import get_db
+from app import models
+from app.services import wecom_crypto as wc, wecom_bot as bot_core
+from app.common import get_setting
+from app.config import config
+from app.database import get_db
 
 router = APIRouter(prefix="/wecom/bot", tags=["wecom-bot"])
 

@@ -1,7 +1,7 @@
 from urllib.parse import parse_qs, urlparse
 
 from app import models
-from app.routers.auth import _wecom_authorize_url, _wecom_callback_url
+from app.controllers.frontend.auth import _wecom_authorize_url, _wecom_callback_url
 
 
 def _setting():

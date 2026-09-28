@@ -6,9 +6,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import app.feishu_bot as fs_core
-import app.feishu_crypto as fc
-import app.routers.feishu_bot as fs_router
+import app.services.feishu_bot as fs_core
+import app.services.feishu_crypto as fc
+import app.controllers.webhook.feishu_bot as fs_router
 from app import models
 from app.database import Base
 

@@ -4,8 +4,8 @@ from fastapi import HTTPException
 from fastapi.responses import RedirectResponse
 
 from app import models
-import app.routers.auth as auth_mod
-from app.routers.auth import wecom_callback, wecom_oauth
+import app.controllers.frontend.auth as auth_mod
+from app.controllers.frontend.auth import wecom_callback, wecom_oauth
 
 
 def _setting():

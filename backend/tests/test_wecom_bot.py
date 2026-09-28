@@ -6,10 +6,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import app.routers.wecom_bot as wecom_router
-import app.kb as kb_mod
-import app.wecom_bot as bot_core
-import app.wecom_crypto as wc
+import app.controllers.webhook.wecom_bot as wecom_router
+import app.services.kb as kb_mod
+import app.services.wecom_bot as bot_core
+import app.services.wecom_crypto as wc
 from app import models
 from app.database import Base
 

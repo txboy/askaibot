@@ -2,7 +2,7 @@ import hashlib
 import hmac
 
 from app import models, schemas
-import app.captcha as captcha_mod
+import app.services.captcha as captcha_mod
 
 
 def test_geetest_sign_token_and_success(monkeypatch):

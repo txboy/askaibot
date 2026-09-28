@@ -4,19 +4,17 @@ from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from .database import Base, SessionLocal, engine
-from .routers import (
-    admin,
+from .controllers.admin import router as admin_router
+from .controllers.frontend import (
     auth,
     chat,
     conversations,
-    dingtalk_bot,
     endpoints,
-    feishu_bot,
+    mcp,
+    skills,
     uploads,
-    wecom_bot,
 )
-from .routers import mcp as mcp_router
-from .routers import skills as skills_router
+from .controllers.webhook import dingtalk_bot, feishu_bot, wecom_bot
 from .security import hash_password
 
 Base.metadata.create_all(bind=engine)
@@ -245,13 +243,13 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(conversations.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(uploads.router, prefix="/api")
-app.include_router(admin.router, prefix="/api")
+app.include_router(admin_router, prefix="/api")
 app.include_router(endpoints.router, prefix="/api")
 app.include_router(wecom_bot.router, prefix="/api")
 app.include_router(dingtalk_bot.router, prefix="/api")
 app.include_router(feishu_bot.router, prefix="/api")
-app.include_router(mcp_router.router, prefix="/api")
-app.include_router(skills_router.router, prefix="/api")
+app.include_router(mcp.router, prefix="/api")
+app.include_router(skills.router, prefix="/api")
 
 
 @app.get("/api/health")

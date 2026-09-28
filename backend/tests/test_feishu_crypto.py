@@ -1,4 +1,4 @@
-import app.feishu_crypto as fc
+import app.services.feishu_crypto as fc
 
 
 KEY = "my-secret-encrypt-key"

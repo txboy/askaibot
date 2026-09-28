@@ -8,10 +8,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import app.routers.admin as admin_mod
-import app.routers.chat as chat_mod
-import app.routers.conversations as conversations_mod
-import app.skills as skill_core
+import app.controllers.admin as admin_mod
+import app.controllers.frontend.chat as chat_mod
+import app.controllers.frontend.conversations as conversations_mod
+import app.services.skills as skill_core
 from app import models, schemas
 from app.database import Base
 from app.config import config

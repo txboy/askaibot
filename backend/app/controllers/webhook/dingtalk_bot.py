@@ -7,10 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from .. import dingtalk_bot as dt_core
-from .. import models, wecom_crypto as wc
-from ..database import get_db
-from ..wecom_bot import generate_reply
+from app.services import dingtalk_bot as dt_core
+from app import models
+from app.services import wecom_crypto as wc
+from app.database import get_db
+from app.services.wecom_bot import generate_reply
 
 router = APIRouter(prefix="/dingtalk/bot", tags=["dingtalk-bot"])
 

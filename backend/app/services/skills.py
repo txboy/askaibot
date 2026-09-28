@@ -17,8 +17,8 @@ import zipfile
 
 import yaml
 
-from . import models
-from .config import config
+from app import models
+from app.config import config
 
 PREFIX = "skill__"
 

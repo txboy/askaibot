@@ -15,7 +15,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 
-from . import models
+from app import models
 
 # 工具名前缀，用于在函数调用层命名空间化（避免不同服务器重名）
 PREFIX = "mcp__"
