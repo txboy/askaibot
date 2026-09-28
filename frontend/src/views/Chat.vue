@@ -9,10 +9,11 @@ import McpPicker from '../components/chat/McpPicker.vue'
 import SkillPicker from '../components/chat/SkillPicker.vue'
 import ProfileModal from '../components/ProfileModal.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import AgreementModal from '../components/AgreementModal.vue'
 import { useChat } from '../composables/useChat'
 import { useConfirm } from '../composables/useConfirm'
 
-const { sidebarOpen, me, profileOpen, smsEnabled, logout, init } = useChat()
+const { sidebarOpen, me, profileOpen, smsEnabled, logout, init, agreementOpen, pendingAgreements, acceptPendingAgreement } = useChat()
 const confirmDlg = useConfirm()
 
 onMounted(init)
@@ -58,6 +59,16 @@ onMounted(init)
       :danger="confirmDlg.danger"
       @confirm="confirmDlg.confirm"
       @cancel="confirmDlg.cancel"
+    />
+
+    <AgreementModal
+      :visible="agreementOpen"
+      :agreements="pendingAgreements"
+      title="请确认以下协议"
+      :confirmable="true"
+      :can-cancel="false"
+      @confirm="acceptPendingAgreement"
+      @cancel="agreementOpen = false"
     />
   </div>
 </template>

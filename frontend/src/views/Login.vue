@@ -1,10 +1,11 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import QRCode from 'qrcode'
 import { api } from '../api'
 import { store } from '../store'
 import Logo from '../components/Logo.vue'
+import AgreementModal from '../components/AgreementModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -49,6 +50,19 @@ const feishuQrUrl = ref('')
 const feishuEnabled = ref(false)
 const inFeishuApp = ref(false)
 
+const agreements = ref([])
+const agreedIds = ref([])
+const modalAgreements = ref([])
+const modalTitle = ref('协议')
+const modalConfirmable = ref(true)
+const modalCanCancel = ref(true)
+const modalOpen = ref(false)
+
+const requiredAgreements = computed(() => agreements.value.filter((a) => a.required))
+const agreementsConfirmed = computed(() =>
+  requiredAgreements.value.every((a) => agreedIds.value.includes(a.id))
+)
+
 function detectDingtalk() {
   if (typeof window === 'undefined') return false
   if (window.dd && window.dd.runtime) return true
@@ -73,7 +87,20 @@ onMounted(async () => {
       store.setAuth(token, user)
     } catch {
       store.logout()
+      router.replace('/')
+      return
     }
+    try {
+      const pending = await api.agreementStatus()
+      if (pending.length) {
+        modalAgreements.value = pending
+        modalTitle.value = '请确认以下协议'
+        modalConfirmable.value = true
+        modalCanCancel.value = false
+        modalOpen.value = true
+        return
+      }
+    } catch {}
     router.replace('/')
     return
   }
@@ -97,6 +124,10 @@ onMounted(async () => {
   try {
     const f = await api.getFeishu()
     feishuEnabled.value = !!f.enabled
+  } catch {}
+  try {
+    const ag = await api.agreements()
+    agreements.value = ag
   } catch {}
   inDingtalkApp.value = detectDingtalk()
   inFeishuApp.value = detectFeishu()
@@ -153,6 +184,32 @@ onMounted(async () => {
 watch(tab, (v) => {
   if (v === 'phone' && phoneEnabled.value) loadCaptcha()
 })
+
+function toggleAgree(id) {
+  const i = agreedIds.value.indexOf(id)
+  if (i >= 0) agreedIds.value.splice(i, 1)
+  else agreedIds.value.push(id)
+}
+
+function viewAgreement(a) {
+  modalAgreements.value = [a]
+  modalTitle.value = a.title
+  modalConfirmable.value = false
+  modalCanCancel.value = true
+  modalOpen.value = true
+}
+
+async function onAgree(ids) {
+  if (!modalConfirmable.value) return
+  try {
+    await api.acceptAgreement(ids)
+  } catch (e) {
+    msg.value = e.message
+    return
+  }
+  modalOpen.value = false
+  router.replace('/')
+}
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -272,6 +329,7 @@ async function sendCode() {
 }
 
 async function loginPhone() {
+  if (!agreementsConfirmed.value) return (msg.value = '请先阅读并同意协议')
   if (!phone.value.trim() || !code.value.trim()) return (msg.value = '请输入手机号和验证码')
   msg.value = ''
   loggingIn.value = true
@@ -287,14 +345,17 @@ async function loginPhone() {
 }
 
 function wecomLogin() {
+  if (!agreementsConfirmed.value) return (msg.value = '请先阅读并同意协议')
   window.location.href = wecomLoginUrl.value
 }
 
 function dingtalkLogin() {
+  if (!agreementsConfirmed.value) return (msg.value = '请先阅读并同意协议')
   window.location.href = dingtalkLoginUrl.value
 }
 
 async function dingtalkFreeLogin() {
+  if (!agreementsConfirmed.value) return (msg.value = '请先阅读并同意协议')
   if (!window.dd || !window.dd.runtime || !dingtalkCorpId.value) {
     return dingtalkLogin()
   }
@@ -325,6 +386,7 @@ function feishuLogin() {
 }
 
 async function feishuFreeLogin() {
+  if (!agreementsConfirmed.value) return (msg.value = '请先阅读并同意协议')
   const h5 = window.h5 && window.h5.getAuthCode ? window.h5 : null
   const tt = window.tt && window.tt.requestAuthCode ? window.tt : null
   if (!h5 && !tt) return feishuLogin()
@@ -389,7 +451,7 @@ async function feishuFreeLogin() {
 
         <p v-if="debugCode" class="debug">模拟验证码：<b>{{ debugCode }}</b></p>
         <input v-model="code" class="input" placeholder="请输入验证码" @keyup.enter="loginPhone" />
-        <button class="btn full" :disabled="loggingIn" @click="loginPhone">
+        <button class="btn full" :disabled="loggingIn || !agreementsConfirmed" @click="loginPhone">
           {{ loggingIn ? '登录中…' : '登录' }}
         </button>
       </div>
@@ -401,7 +463,7 @@ async function feishuFreeLogin() {
         <template v-else>
           <img v-if="qrUrl" :src="qrUrl" class="qr" alt="企业微信登录二维码" />
           <p class="tip">{{ wecomMode === 'real' ? '使用企业微信扫码登录' : '当前为模拟模式，点击下方按钮体验登录' }}</p>
-          <button class="btn full" @click="wecomLogin">
+          <button class="btn full" :disabled="!agreementsConfirmed" @click="wecomLogin">
             {{ wecomMode === 'real' ? '打开企业微信授权' : '模拟扫码登录' }}
           </button>
         </template>
@@ -413,14 +475,14 @@ async function feishuFreeLogin() {
         </template>
         <template v-else-if="inDingtalkApp">
           <p class="tip">检测到钉钉环境，使用钉钉一键登录</p>
-          <button class="btn full" :disabled="loggingIn" @click="dingtalkFreeLogin">
+          <button class="btn full" :disabled="loggingIn || !agreementsConfirmed" @click="dingtalkFreeLogin">
             {{ loggingIn ? '登录中…' : '钉钉一键登录' }}
           </button>
         </template>
         <template v-else>
           <img v-if="dingtalkQrUrl" :src="dingtalkQrUrl" class="qr" alt="钉钉登录二维码" />
           <p class="tip">{{ dingtalkMode === 'real' ? '使用钉钉扫一扫登录' : '当前为模拟模式，点击下方按钮体验登录' }}</p>
-          <button class="btn full" @click="dingtalkLogin">
+          <button class="btn full" :disabled="!agreementsConfirmed" @click="dingtalkLogin">
             {{ dingtalkMode === 'real' ? '打开钉钉授权' : '模拟扫码登录' }}
           </button>
         </template>
@@ -432,21 +494,39 @@ async function feishuFreeLogin() {
         </template>
         <template v-else-if="inFeishuApp">
           <p class="tip">检测到飞书环境，使用飞书一键登录</p>
-          <button class="btn full" :disabled="loggingIn" @click="feishuFreeLogin">
+          <button class="btn full" :disabled="loggingIn || !agreementsConfirmed" @click="feishuFreeLogin">
             {{ loggingIn ? '登录中…' : '飞书一键登录' }}
           </button>
         </template>
         <template v-else>
           <img v-if="feishuQrUrl" :src="feishuQrUrl" class="qr" alt="飞书登录二维码" />
           <p class="tip">{{ feishuMode === 'real' ? '使用飞书授权登录' : '当前为模拟模式，点击下方按钮体验登录' }}</p>
-          <button class="btn full" @click="feishuLogin">
+          <button class="btn full" :disabled="!agreementsConfirmed" @click="feishuLogin">
             {{ feishuMode === 'real' ? '打开飞书授权' : '模拟扫码登录' }}
           </button>
         </template>
       </div>
 
+      <div v-if="agreements.length" class="agreements">
+        <label v-for="a in agreements" :key="a.id" class="agree-check">
+          <input type="checkbox" :checked="agreedIds.includes(a.id)" @change="toggleAgree(a.id)" />
+          <span>我已阅读并同意</span>
+          <a class="agree-link" @click.prevent="viewAgreement(a)">《{{ a.title }}》</a>
+        </label>
+      </div>
+
       <p v-if="msg" class="msg">{{ msg }}</p>
     </div>
+
+    <AgreementModal
+      :visible="modalOpen"
+      :agreements="modalAgreements"
+      :title="modalTitle"
+      :confirmable="modalConfirmable"
+      :can-cancel="modalCanCancel"
+      @confirm="onAgree"
+      @cancel="modalOpen = false"
+    />
   </div>
 </template>
 
@@ -572,6 +652,38 @@ async function feishuFreeLogin() {
   font-size: 13px;
   color: var(--danger);
   text-align: center;
+}
+
+.agreements {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.agree-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.agree-check input {
+  cursor: pointer;
+}
+
+.agree-link {
+  color: var(--primary);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.agree-link:hover {
+  text-decoration: underline;
 }
 
 

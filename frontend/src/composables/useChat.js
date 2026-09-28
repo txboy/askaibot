@@ -27,6 +27,9 @@ const smsEnabled = ref(false)
 const searchEnabled = ref(false)
 const webSearch = ref(false)
 
+const agreementOpen = ref(false)
+const pendingAgreements = ref([])
+
 const knowledgeBases = ref([])
 const selectedKnowledgeBaseId = ref(null)
 const kbPickerOpen = ref(false)
@@ -329,6 +332,16 @@ function logout() {
   router?.replace('/login')
 }
 
+async function acceptPendingAgreement() {
+  try {
+    await api.acceptAgreement(pendingAgreements.value.map((a) => a.id))
+  } catch {
+    return
+  }
+  pendingAgreements.value = []
+  agreementOpen.value = false
+}
+
 async function init() {
   if (window.innerWidth < 800) sidebarOpen.value = false
   if (!store.user) {
@@ -340,6 +353,13 @@ async function init() {
       return
     }
   }
+  try {
+    const pending = await api.agreementStatus()
+    if (pending.length) {
+      pendingAgreements.value = pending
+      agreementOpen.value = true
+    }
+  } catch {}
   await loadConversations()
   await loadEndpoints()
   try {
@@ -394,6 +414,9 @@ export function useChat() {
     smsEnabled,
     searchEnabled,
     webSearch,
+    agreementOpen,
+    pendingAgreements,
+    acceptPendingAgreement,
     knowledgeBases,
     selectedKnowledgeBaseId,
     kbPickerOpen,
