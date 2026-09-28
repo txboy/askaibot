@@ -10,6 +10,7 @@ from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
+from .. import captcha as captcha_mod
 from ..auth import create_token, get_current_user
 from ..common import get_setting
 from ..config import config
@@ -20,14 +21,38 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 _sms_codes: dict[str, dict] = {}
 
 
+@router.get("/captcha")
+def get_captcha(db: Session = Depends(get_db)):
+    setting = get_setting(db)
+    return captcha_mod.build_challenge(setting)
+
+
 @router.post("/sms/send")
 def sms_send(payload: schemas.SMSRequest, db: Session = Depends(get_db)):
     setting = get_setting(db)
+
+    if setting.sms_captcha_enabled:
+        if not captcha_mod.verify(setting, payload):
+            raise HTTPException(status_code=400, detail="验证码错误或已过期")
+
+    now = datetime.now()
+    prev = _sms_codes.get(payload.phone)
+    cooldown = setting.sms_cooldown or 60
+    if (
+        prev
+        and prev.get("sent_at")
+        and (now - prev["sent_at"]).total_seconds() < cooldown
+    ):
+        raise HTTPException(
+            status_code=429, detail=f"发送过于频繁，请{cooldown}秒后再试"
+        )
+
     if config.sms_mock and setting.debug_mode:
         code = f"{random.randint(0, 999999):06d}"
         _sms_codes[payload.phone] = {
             "code": code,
-            "expires": datetime.now() + timedelta(minutes=5),
+            "expires": now + timedelta(minutes=5),
+            "sent_at": now,
         }
         return {"message": "验证码已发送", "debug_code": code}
 
@@ -36,7 +61,8 @@ def sms_send(payload: schemas.SMSRequest, db: Session = Depends(get_db)):
     code = f"{random.randint(0, 999999):06d}"
     _sms_codes[payload.phone] = {
         "code": code,
-        "expires": datetime.now() + timedelta(minutes=5),
+        "expires": now + timedelta(minutes=5),
+        "sent_at": now,
     }
     try:
         from ..sms import send_sms
@@ -436,9 +462,7 @@ async def dingtalk_callback(code: str, db: Session = Depends(get_db)):
         return RedirectResponse(
             f"{_dingtalk_base(setting)}/login?error={quote('无法识别钉钉身份', safe='')}"
         )
-    user = (
-        db.query(models.User).filter(models.User.dingtalk_userid == userid).first()
-    )
+    user = db.query(models.User).filter(models.User.dingtalk_userid == userid).first()
     if not user:
         user = models.User(dingtalk_userid=userid, nickname=nickname)
         db.add(user)
@@ -467,9 +491,7 @@ async def dingtalk_free_login(
         userid = f"mock-dd-{payload.code}"
         nickname = "钉钉用户"
 
-    user = (
-        db.query(models.User).filter(models.User.dingtalk_userid == userid).first()
-    )
+    user = db.query(models.User).filter(models.User.dingtalk_userid == userid).first()
     if not user:
         user = models.User(dingtalk_userid=userid, nickname=nickname)
         db.add(user)
@@ -518,9 +540,7 @@ async def _feishu_user_token(app_id: str, app_secret: str, code: str) -> dict:
     if data.get("code") != 0:
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"飞书登录失败：code={data.get('code')} msg={data.get('msg')}"
-            ),
+            detail=(f"飞书登录失败：code={data.get('code')} msg={data.get('msg')}"),
         )
     return data
 

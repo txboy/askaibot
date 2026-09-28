@@ -6,6 +6,15 @@ from pydantic import BaseModel
 
 class SMSRequest(BaseModel):
     phone: str
+    captcha_id: Optional[str] = None
+    captcha: Optional[str] = None
+    lot_number: Optional[str] = None
+    captcha_output: Optional[str] = None
+    pass_token: Optional[str] = None
+    gen_time: Optional[str] = None
+    ticket: Optional[str] = None
+    randstr: Optional[str] = None
+    captcha_verify_param: Optional[str] = None
 
 
 class SMSVerifyRequest(BaseModel):
@@ -244,6 +253,16 @@ class SmsOut(BaseModel):
     region: str
     sdk_app_id: str
     secret_set: bool
+    captcha_enabled: bool
+    captcha_provider: str
+    cooldown: int
+    geetest_captcha_id: str
+    geetest_key_set: bool
+    tencent_captcha_app_id: str
+    tencent_key_set: bool
+    aliyun_access_key_id: str
+    aliyun_secret_set: bool
+    aliyun_scene_id: str
 
 
 class SmsUpdate(BaseModel):
@@ -254,6 +273,16 @@ class SmsUpdate(BaseModel):
     template_code: Optional[str] = None
     region: Optional[str] = None
     sdk_app_id: Optional[str] = None
+    captcha_enabled: Optional[bool] = None
+    captcha_provider: Optional[str] = None
+    cooldown: Optional[int] = None
+    geetest_captcha_id: Optional[str] = None
+    geetest_captcha_key: Optional[str] = None
+    tencent_captcha_app_id: Optional[str] = None
+    tencent_captcha_app_secret_key: Optional[str] = None
+    aliyun_access_key_id: Optional[str] = None
+    aliyun_access_key_secret: Optional[str] = None
+    aliyun_scene_id: Optional[str] = None
 
 
 class SearchOut(BaseModel):

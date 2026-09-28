@@ -151,7 +151,12 @@ def get_debug(db: Session = Depends(get_db)):
 def get_sms_enabled(db: Session = Depends(get_db)):
     setting = get_setting(db)
     enabled = bool((config.sms_mock and setting.debug_mode) or setting.sms_provider)
-    return {"enabled": enabled}
+    return {
+        "enabled": enabled,
+        "captcha_enabled": bool(setting.sms_captcha_enabled),
+        "captcha_provider": setting.sms_captcha_provider or "builtin",
+        "cooldown": setting.sms_cooldown or 60,
+    }
 
 
 @router.get("/config/search")

@@ -319,6 +319,16 @@ def _sms_out(setting: models.Setting) -> schemas.SmsOut:
         region=setting.sms_region or "",
         sdk_app_id=setting.sms_sdk_app_id or "",
         secret_set=bool(setting.sms_secret),
+        captcha_enabled=bool(setting.sms_captcha_enabled),
+        captcha_provider=setting.sms_captcha_provider or "builtin",
+        cooldown=setting.sms_cooldown or 60,
+        geetest_captcha_id=setting.geetest_captcha_id or "",
+        geetest_key_set=bool(setting.geetest_captcha_key),
+        tencent_captcha_app_id=setting.tencent_captcha_app_id or "",
+        tencent_key_set=bool(setting.tencent_captcha_app_secret_key),
+        aliyun_access_key_id=setting.aliyun_captcha_access_key_id or "",
+        aliyun_secret_set=bool(setting.aliyun_captcha_access_key_secret),
+        aliyun_scene_id=setting.aliyun_captcha_scene_id or "",
     )
 
 
@@ -351,6 +361,26 @@ def update_sms(
         setting.sms_region = payload.region
     if payload.sdk_app_id is not None:
         setting.sms_sdk_app_id = payload.sdk_app_id
+    if payload.captcha_enabled is not None:
+        setting.sms_captcha_enabled = 1 if payload.captcha_enabled else 0
+    if payload.captcha_provider is not None:
+        setting.sms_captcha_provider = payload.captcha_provider
+    if payload.cooldown is not None:
+        setting.sms_cooldown = payload.cooldown
+    if payload.geetest_captcha_id is not None:
+        setting.geetest_captcha_id = payload.geetest_captcha_id
+    if payload.geetest_captcha_key:
+        setting.geetest_captcha_key = payload.geetest_captcha_key
+    if payload.tencent_captcha_app_id is not None:
+        setting.tencent_captcha_app_id = payload.tencent_captcha_app_id
+    if payload.tencent_captcha_app_secret_key:
+        setting.tencent_captcha_app_secret_key = payload.tencent_captcha_app_secret_key
+    if payload.aliyun_access_key_id is not None:
+        setting.aliyun_captcha_access_key_id = payload.aliyun_access_key_id
+    if payload.aliyun_access_key_secret:
+        setting.aliyun_captcha_access_key_secret = payload.aliyun_access_key_secret
+    if payload.aliyun_scene_id is not None:
+        setting.aliyun_captcha_scene_id = payload.aliyun_scene_id
     db.commit()
     db.refresh(setting)
     return _sms_out(setting)

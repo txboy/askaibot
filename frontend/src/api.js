@@ -28,7 +28,8 @@ async function request(path, { method = 'GET', body, headers = {}, token } = {})
 const adminRequest = (path, opts = {}) => request(path, { ...opts, token: store.adminToken })
 
 export const api = {
-  smsSend: (phone) => request('/auth/sms/send', { method: 'POST', body: { phone } }),
+  captcha: () => request('/auth/captcha'),
+  smsSend: (data) => request('/auth/sms/send', { method: 'POST', body: data }),
   smsVerify: (phone, code) => request('/auth/sms/verify', { method: 'POST', body: { phone, code } }),
   wecomQrcode: () => request('/auth/wecom/qrcode'),
   dingtalkQrcode: () => request('/auth/dingtalk/qrcode'),

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import QRCode from 'qrcode'
 import { api } from '../api'
@@ -16,6 +16,19 @@ const debugCode = ref('')
 const sending = ref(false)
 const loggingIn = ref(false)
 const msg = ref('')
+
+const captchaType = ref('')
+const captchaImg = ref('')
+const captchaId = ref('')
+const captchaInput = ref('')
+const captchaData = ref({})
+const captchaLoading = ref(false)
+const cooldownSec = ref(0)
+const cooldownTimer = ref(null)
+const smsCooldown = ref(60)
+const captchaEnabled = ref(false)
+const captchaTencentAppId = ref('')
+const captchaAliyunScene = ref('')
 
 const wecomMode = ref('')
 const wecomLoginUrl = ref('')
@@ -70,6 +83,8 @@ onMounted(async () => {
   try {
     const s = await api.getSms()
     phoneEnabled.value = !!s.enabled
+    captchaEnabled.value = !!s.captcha_enabled
+    smsCooldown.value = s.cooldown || 60
   } catch {}
   try {
     const w = await api.getWecom()
@@ -90,6 +105,7 @@ onMounted(async () => {
   else if (wecomEnabled.value) tab.value = 'wecom'
   else if (dingtalkEnabled.value) tab.value = 'dingtalk'
   else if (feishuEnabled.value) tab.value = 'feishu'
+  if (tab.value === 'phone' && phoneEnabled.value) loadCaptcha()
   if (!phoneEnabled.value && !wecomEnabled.value && !dingtalkEnabled.value && !feishuEnabled.value) {
     msg.value = '暂无可用登录方式，请联系管理员配置'
     return
@@ -134,16 +150,122 @@ onMounted(async () => {
   }
 })
 
+watch(tab, (v) => {
+  if (v === 'phone' && phoneEnabled.value) loadCaptcha()
+})
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve()
+    const s = document.createElement('script')
+    s.src = src
+    s.onload = resolve
+    s.onerror = () => reject(new Error('加载验证码脚本失败'))
+    document.head.appendChild(s)
+  })
+}
+
+async function loadCaptcha() {
+  if (!captchaEnabled.value) {
+    captchaType.value = ''
+    captchaData.value = {}
+    return
+  }
+  captchaLoading.value = true
+  captchaData.value = {}
+  captchaInput.value = ''
+  try {
+    const r = await api.captcha()
+    captchaType.value = r.type
+    if (r.type === 'image') {
+      captchaId.value = r.captcha_id
+      captchaImg.value = 'data:image/png;base64,' + r.image_base64
+    } else if (r.type === 'geetest') {
+      await loadScript('https://static.geetest.com/v4/gt4.js')
+      if (window.initGeetest4) {
+        window.initGeetest4({
+          captchaId: r.captcha_id,
+          product: 'bind',
+          bind: '#gt4-box',
+          onSuccess: (obj) => {
+            captchaData.value = {
+              lot_number: obj.lot_number,
+              captcha_output: obj.captcha_output,
+              pass_token: obj.pass_token,
+              gen_time: obj.gen_time,
+            }
+          },
+        })
+      }
+    } else if (r.type === 'tencent') {
+      captchaTencentAppId.value = r.app_id
+      await loadScript('https://turing.captcha.gtimg.com/1/tcaptcha.js')
+    } else if (r.type === 'aliyun') {
+      captchaAliyunScene.value = r.scene_id
+      await loadScript('https://g.alicdn.com/AWSC/AWSC/AWSC.js')
+    }
+  } catch (e) {
+    captchaType.value = ''
+  } finally {
+    captchaLoading.value = false
+  }
+}
+
+function openCaptcha() {
+  if (!captchaEnabled.value || !captchaType.value) return
+  if (captchaType.value === 'geetest') return
+  if (captchaType.value === 'tencent' && window.TencentCaptcha) {
+    const cap = new window.TencentCaptcha(captchaTencentAppId.value, (res) => {
+      if (res.ret === 0) captchaData.value = { ticket: res.ticket, randstr: res.randstr }
+    })
+    cap.show()
+  } else if (captchaType.value === 'aliyun' && window.initAliyunCaptcha) {
+    window.initAliyunCaptcha({
+      sceneId: captchaAliyunScene.value,
+      prefix: captchaAliyunScene.value,
+      lang: 'ch',
+      success: (res) => {
+        captchaData.value = { captcha_verify_param: res.captchaVerifyParam }
+      },
+    })
+  }
+}
+
+function startCooldown(seconds) {
+  cooldownSec.value = seconds
+  if (cooldownTimer.value) clearInterval(cooldownTimer.value)
+  cooldownTimer.value = setInterval(() => {
+    cooldownSec.value -= 1
+    if (cooldownSec.value <= 0) {
+      clearInterval(cooldownTimer.value)
+      cooldownTimer.value = null
+    }
+  }, 1000)
+}
+
 async function sendCode() {
   if (!phone.value.trim()) return (msg.value = '请输入手机号')
+  if (captchaType.value === 'image' && !captchaInput.value.trim()) return (msg.value = '请输入验证码')
   msg.value = ''
   sending.value = true
   try {
-    const r = await api.smsSend(phone.value.trim())
+    const payload = { phone: phone.value.trim() }
+    if (captchaEnabled.value) {
+      if (captchaType.value === 'image') {
+        payload.captcha_id = captchaId.value
+        payload.captcha = captchaInput.value.trim()
+      } else {
+        Object.assign(payload, captchaData.value || {})
+      }
+    }
+    const r = await api.smsSend(payload)
     debugCode.value = r.debug_code || ''
     msg.value = '验证码已发送'
+    startCooldown(smsCooldown.value)
+    if (captchaEnabled.value) loadCaptcha()
   } catch (e) {
     msg.value = e.message
+    if (captchaEnabled.value) loadCaptcha()
   } finally {
     sending.value = false
   }
@@ -246,10 +368,25 @@ async function feishuFreeLogin() {
       <div v-if="tab === 'phone' && phoneEnabled" class="panel">
         <div class="phone-row">
           <input v-model="phone" class="input" placeholder="请输入手机号" @keyup.enter="loginPhone" />
-          <button class="btn btn-outline code-btn" :disabled="sending" @click="sendCode">
-            {{ sending ? '发送中' : '获取验证码' }}
+          <button class="btn btn-outline code-btn" :disabled="sending || cooldownSec > 0" @click="sendCode">
+            {{ sending ? '发送中' : (cooldownSec > 0 ? `重新发送(${cooldownSec}s)` : '获取验证码') }}
           </button>
         </div>
+
+        <div v-if="captchaEnabled && captchaType === 'image'" class="captcha-row">
+          <input v-model="captchaInput" class="input" placeholder="验证码" @keyup.enter="sendCode" />
+          <img v-if="captchaImg" :src="captchaImg" class="captcha-img" alt="验证码" @click="loadCaptcha" title="点击刷新" />
+        </div>
+        <div v-else-if="captchaEnabled && captchaType === 'geetest'" class="captcha-row">
+          <div id="gt4-box" class="gt4-box"></div>
+        </div>
+        <div v-else-if="captchaEnabled && captchaType === 'tencent'" class="captcha-row">
+          <button class="btn btn-outline" @click="openCaptcha">点击完成腾讯验证</button>
+        </div>
+        <div v-else-if="captchaEnabled && captchaType === 'aliyun'" class="captcha-row">
+          <button class="btn btn-outline" @click="openCaptcha">点击完成阿里云验证</button>
+        </div>
+
         <p v-if="debugCode" class="debug">模拟验证码：<b>{{ debugCode }}</b></p>
         <input v-model="code" class="input" placeholder="请输入验证码" @keyup.enter="loginPhone" />
         <button class="btn full" :disabled="loggingIn" @click="loginPhone">
@@ -376,6 +513,26 @@ async function feishuFreeLogin() {
 
 .phone-row .input {
   flex: 1;
+}
+
+.captcha-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.captcha-row .input {
+  flex: 1;
+}
+
+.captcha-img {
+  height: 40px;
+  width: 120px;
+  object-fit: cover;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .code-btn {

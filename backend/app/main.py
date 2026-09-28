@@ -82,6 +82,16 @@ def _ensure_columns() -> None:
             "sms_template_code": "VARCHAR DEFAULT ''",
             "sms_region": "VARCHAR DEFAULT ''",
             "sms_sdk_app_id": "VARCHAR DEFAULT ''",
+            "sms_captcha_enabled": "INTEGER DEFAULT 1",
+            "sms_captcha_provider": "VARCHAR DEFAULT 'builtin'",
+            "sms_cooldown": "INTEGER DEFAULT 60",
+            "geetest_captcha_id": "VARCHAR DEFAULT ''",
+            "geetest_captcha_key": "VARCHAR DEFAULT ''",
+            "tencent_captcha_app_id": "VARCHAR DEFAULT ''",
+            "tencent_captcha_app_secret_key": "VARCHAR DEFAULT ''",
+            "aliyun_captcha_access_key_id": "VARCHAR DEFAULT ''",
+            "aliyun_captcha_access_key_secret": "VARCHAR DEFAULT ''",
+            "aliyun_captcha_scene_id": "VARCHAR DEFAULT ''",
         }
         for name, ddl in extra_settings.items():
             if name not in cols:
