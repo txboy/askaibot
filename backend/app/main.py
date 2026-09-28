@@ -4,7 +4,16 @@ from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from .database import Base, SessionLocal, engine
-from .routers import admin, auth, chat, conversations, endpoints, uploads, wecom_bot
+from .routers import (
+    admin,
+    auth,
+    chat,
+    conversations,
+    dingtalk_bot,
+    endpoints,
+    uploads,
+    wecom_bot,
+)
 from .routers import mcp as mcp_router
 from .routers import skills as skills_router
 from .security import hash_password
@@ -87,6 +96,16 @@ def _ensure_columns() -> None:
             if name not in cols:
                 with engine.begin() as conn:
                     conn.execute(text(f"ALTER TABLE settings ADD COLUMN {name} {ddl}"))
+        dingtalk_settings = {
+            "dingtalk_app_key": "VARCHAR DEFAULT ''",
+            "dingtalk_app_secret": "VARCHAR DEFAULT ''",
+            "dingtalk_agent_id": "VARCHAR DEFAULT ''",
+            "dingtalk_redirect": "VARCHAR DEFAULT ''",
+        }
+        for name, ddl in dingtalk_settings.items():
+            if name not in cols:
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE settings ADD COLUMN {name} {ddl}"))
     if "users" in insp.get_table_names():
         ucols = {c["name"] for c in insp.get_columns("users")}
         for name, ddl in {
@@ -96,6 +115,11 @@ def _ensure_columns() -> None:
             if name not in ucols:
                 with engine.begin() as conn:
                     conn.execute(text(f"ALTER TABLE users ADD COLUMN {name} {ddl}"))
+        if "dingtalk_userid" not in ucols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE users ADD COLUMN dingtalk_userid VARCHAR")
+                )
     if "messages" in insp.get_table_names():
         cols = {c["name"] for c in insp.get_columns("messages")}
         if "tokens" not in cols:
@@ -144,6 +168,13 @@ def _ensure_columns() -> None:
                     )
     if "wecom_bots" in insp.get_table_names():
         bcols = {c["name"] for c in insp.get_columns("wecom_bots")}
+        if "provider" not in bcols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE wecom_bots ADD COLUMN provider VARCHAR DEFAULT 'wecom'"
+                    )
+                )
         if "mcp_ids" not in bcols:
             with engine.begin() as conn:
                 conn.execute(
@@ -194,6 +225,7 @@ app.include_router(uploads.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(endpoints.router, prefix="/api")
 app.include_router(wecom_bot.router, prefix="/api")
+app.include_router(dingtalk_bot.router, prefix="/api")
 app.include_router(mcp_router.router, prefix="/api")
 app.include_router(skills_router.router, prefix="/api")
 

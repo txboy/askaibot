@@ -317,3 +317,162 @@ async def _wecom_exchange_userid(setting, code: str) -> str:
                 ),
             )
         return info.get("userid", "")
+
+
+def _dingtalk_is_real(setting) -> bool:
+    return bool(setting.dingtalk_app_key and setting.dingtalk_app_secret)
+
+
+def _dingtalk_base(setting) -> str:
+    base = (setting.dingtalk_redirect or config.frontend_url).rstrip("/")
+    if base.endswith("/api/auth/dingtalk/callback"):
+        base = base[: -len("/api/auth/dingtalk/callback")].rstrip("/")
+    return base
+
+
+def _dingtalk_callback_url(setting) -> str:
+    return f"{_dingtalk_base(setting)}/api/auth/dingtalk/callback"
+
+
+def _dingtalk_authorize_url(setting, state: str) -> str:
+    redirect = _dingtalk_callback_url(setting)
+    return (
+        "https://login.dingtalk.com/oauth2/auth"
+        f"?redirect_uri={quote(redirect, safe='')}"
+        "&response_type=code"
+        f"&client_id={setting.dingtalk_app_key}"
+        "&scope=openid"
+        "&prompt=consent"
+        f"&state={state}"
+    )
+
+
+async def _dingtalk_user_token(client_id: str, client_secret: str, code: str) -> str:
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            "https://api.dingtalk.com/v1.0/oauth2/userAccessToken",
+            headers={"Content-Type": "application/json"},
+            json={
+                "clientId": client_id,
+                "clientSecret": client_secret,
+                "code": code,
+                "grantType": "authorization_code",
+            },
+        )
+        data = resp.json()
+    token = data.get("accessToken")
+    if not token:
+        raise HTTPException(
+            status_code=400,
+            detail=f"钉钉登录失败：{data.get('message', '未获取到 accessToken')}",
+        )
+    return token
+
+
+async def _dingtalk_user_info(access_token: str) -> dict:
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(
+            "https://api.dingtalk.com/v1.0/contact/users/me",
+            headers={"x-acs-dingtalk-access-token": access_token},
+        )
+        data = resp.json()
+    if not data.get("userId"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"钉钉用户信息获取失败：{data.get('message', '未获取到 userId')}",
+        )
+    return data
+
+
+@router.get("/dingtalk/qrcode")
+def dingtalk_qrcode(db: Session = Depends(get_db)):
+    setting = get_setting(db)
+    if _dingtalk_is_real(setting):
+        state = str(uuid.uuid4())
+        url = _dingtalk_authorize_url(setting, state)
+        return {"mode": "real", "login_url": url, "state": state}
+    if not setting.debug_mode:
+        return {"mode": "disabled", "login_url": "", "mock_code": ""}
+    code = f"mock-dd-{uuid.uuid4().hex}"
+    login_url = f"/api/auth/dingtalk/callback?code={code}"
+    return {
+        "mode": "mock",
+        "login_url": login_url,
+        "mock_code": code,
+    }
+
+
+@router.get("/dingtalk/oauth")
+def dingtalk_oauth(db: Session = Depends(get_db), state: str = ""):
+    setting = get_setting(db)
+    if _dingtalk_is_real(setting):
+        state = state or str(uuid.uuid4())
+        return RedirectResponse(_dingtalk_authorize_url(setting, state))
+    return RedirectResponse(f"{config.frontend_url}/login")
+
+
+@router.get("/dingtalk/callback")
+async def dingtalk_callback(code: str, db: Session = Depends(get_db)):
+    setting = get_setting(db)
+    if _dingtalk_is_real(setting):
+        try:
+            atoken = await _dingtalk_user_token(
+                setting.dingtalk_app_key, setting.dingtalk_app_secret, code
+            )
+            info = await _dingtalk_user_info(atoken)
+        except HTTPException as exc:
+            return RedirectResponse(
+                f"{_dingtalk_base(setting)}/login?error={quote(str(exc.detail), safe='')}"
+            )
+        userid = info.get("userId", "")
+        nickname = info.get("nick") or f"钉钉·{userid[-6:]}"
+    else:
+        if not setting.debug_mode:
+            raise HTTPException(status_code=400, detail="未开启模拟登录")
+        userid = f"mock-dd-{code}"
+        nickname = "钉钉用户"
+
+    if not userid:
+        return RedirectResponse(
+            f"{_dingtalk_base(setting)}/login?error={quote('无法识别钉钉身份', safe='')}"
+        )
+    user = (
+        db.query(models.User).filter(models.User.dingtalk_userid == userid).first()
+    )
+    if not user:
+        user = models.User(dingtalk_userid=userid, nickname=nickname)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    token = create_token(user.id)
+    return RedirectResponse(f"{_dingtalk_base(setting)}/login?token={token}")
+
+
+@router.post("/dingtalk/free-login", response_model=schemas.TokenResponse)
+async def dingtalk_free_login(
+    payload: schemas.DingtalkCodeRequest, db: Session = Depends(get_db)
+):
+    setting = get_setting(db)
+    if _dingtalk_is_real(setting):
+        atoken = await _dingtalk_user_token(
+            setting.dingtalk_app_key, setting.dingtalk_app_secret, payload.code
+        )
+        info = await _dingtalk_user_info(atoken)
+        userid = info.get("userId", "")
+        nickname = info.get("nick") or f"钉钉·{userid[-6:]}"
+    else:
+        if not setting.debug_mode:
+            raise HTTPException(status_code=400, detail="未开启模拟登录")
+        userid = f"mock-dd-{payload.code}"
+        nickname = "钉钉用户"
+
+    user = (
+        db.query(models.User).filter(models.User.dingtalk_userid == userid).first()
+    )
+    if not user:
+        user = models.User(dingtalk_userid=userid, nickname=nickname)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    return schemas.TokenResponse(token=create_token(user.id), user=user)

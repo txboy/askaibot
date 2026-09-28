@@ -21,6 +21,9 @@ class User(Base):
     wecom_userid: Mapped[str | None] = mapped_column(
         String, unique=True, nullable=True, index=True
     )
+    dingtalk_userid: Mapped[str | None] = mapped_column(
+        String, unique=True, nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
@@ -67,6 +70,10 @@ class Setting(Base):
     wecom_secret: Mapped[str] = mapped_column(String, default="")
     wecom_agent_id: Mapped[str] = mapped_column(String, default="")
     wecom_redirect: Mapped[str] = mapped_column(String, default="")
+    dingtalk_app_key: Mapped[str] = mapped_column(String, default="")
+    dingtalk_app_secret: Mapped[str] = mapped_column(String, default="")
+    dingtalk_agent_id: Mapped[str] = mapped_column(String, default="")
+    dingtalk_redirect: Mapped[str] = mapped_column(String, default="")
     logo_path: Mapped[str] = mapped_column(String, default="")
     favicon_path: Mapped[str] = mapped_column(String, default="")
     site_title: Mapped[str] = mapped_column(String, default="askai")
@@ -110,6 +117,7 @@ class WecomBot(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String)
+    provider: Mapped[str] = mapped_column(String, default="wecom")  # wecom / dingtalk
     corp_id: Mapped[str] = mapped_column(String, default="")
     secret: Mapped[str] = mapped_column(String, default="")
     agent_id: Mapped[str] = mapped_column(String, default="")

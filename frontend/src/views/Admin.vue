@@ -25,6 +25,7 @@ const navItems = [
   { key: 'skill', label: '技能包' },
   { key: 'knowledge', label: '知识库' },
   { key: 'wecom', label: '企微设置' },
+  { key: 'dingtalk', label: '钉钉设置' },
   { key: 'system', label: '系统设置' },
   { key: 'password', label: '修改密码' },
 ]
@@ -44,6 +45,14 @@ const wecomRedirect = ref('')
 const wecomSecretSet = ref(false)
 const wecomMsg = ref('')
 const savingWecom = ref(false)
+
+const dingtalkAppKey = ref('')
+const dingtalkSecret = ref('')
+const dingtalkAgentId = ref('')
+const dingtalkRedirect = ref('')
+const dingtalkSecretSet = ref(false)
+const dingtalkMsg = ref('')
+const savingDingtalk = ref(false)
 
 const logoFile = ref(null)
 const logoPreview = ref('')
@@ -186,7 +195,7 @@ async function doLogin() {
 
 async function load() {
   try {
-    await Promise.all([loadEndpoints(), loadWecom(), loadLogo(), loadStats(), loadUsers(), loadEndpointsUsage(), loadTheme(), loadDebug(), loadSms(), loadSystem(), loadKbs(), loadBots(), loadMcps(), loadSkills()])
+    await Promise.all([loadEndpoints(), loadWecom(), loadDingtalk(), loadLogo(), loadStats(), loadUsers(), loadEndpointsUsage(), loadTheme(), loadDebug(), loadSms(), loadSystem(), loadKbs(), loadBots('wecom'), loadMcps(), loadSkills()])
   } catch (e) {
     if (String(e.message).includes('401') || String(e.message).includes('管理员')) {
       logout()
@@ -207,7 +216,8 @@ async function selectSection(key) {
     else if (key === 'mcp') await loadMcps()
     else if (key === 'skill') await loadSkills()
     else if (key === 'knowledge') await loadKbs()
-    else if (key === 'wecom') await loadWecom()
+    else if (key === 'wecom') { await loadWecom(); await loadBots('wecom') }
+    else if (key === 'dingtalk') await loadBots('dingtalk')
     else if (key === 'system') await loadSystem()
   } catch (e) {
     if (String(e.message).includes('401') || String(e.message).includes('管理员')) {
@@ -595,17 +605,18 @@ async function delKb(kb) {
   }
 }
 
-async function loadBots() {
+async function loadBots(provider = 'wecom') {
   try {
-    bots.value = await api.adminGetWecomBots()
+    bots.value = await api.adminGetWecomBots(provider)
     botMsg.value = ''
   } catch {
-    botMsg.value = '加载企微机器人失败'
+    botMsg.value = '加载机器人失败'
   }
 }
 
-function openBotCreate() {
+function openBotCreate(provider = 'wecom') {
   editingBot.value = {
+    provider,
     name: '',
     corp_id: '',
     secret: '',
@@ -625,6 +636,7 @@ function openBotCreate() {
 function openBotEdit(b) {
   editingBot.value = {
     id: b.id,
+    provider: b.provider || 'wecom',
     name: b.name,
     corp_id: b.corp_id,
     secret: '',
@@ -654,6 +666,8 @@ const botModelOptions = computed(() => {
     .filter(Boolean)
 })
 
+const botIsDingtalk = computed(() => (editingBot.value?.provider || 'wecom') === 'dingtalk')
+
 function toggleBotKb(kbId) {
   const arr = editingBot.value.kb_ids
   const idx = arr.indexOf(kbId)
@@ -670,6 +684,7 @@ async function saveBot() {
   try {
     const body = {
       name: f.name,
+      provider: f.provider || 'wecom',
       corp_id: f.corp_id,
       agent_id: f.agent_id,
       token: f.token,
@@ -689,7 +704,7 @@ async function saveBot() {
       await api.adminCreateWecomBot(body)
     }
     editingBot.value = null
-    await loadBots()
+    await loadBots(f.provider)
   } catch (e) {
     botMsg.value = e.message
   } finally {
@@ -701,7 +716,7 @@ async function delBot(b) {
   if (!(await confirmDlg.askConfirm(`删除机器人「${b.name}」？`, { title: '删除机器人', danger: true }))) return
   try {
     await api.adminDeleteWecomBot(b.id)
-    await loadBots()
+    await loadBots(b.provider)
   } catch (e) {
     botMsg.value = e.message
   }
@@ -980,6 +995,39 @@ async function saveWecom() {
     wecomMsg.value = e.message
   } finally {
     savingWecom.value = false
+  }
+}
+
+async function loadDingtalk() {
+  try {
+    const d = await api.adminGetDingtalk()
+    dingtalkAppKey.value = d.app_key
+    dingtalkAgentId.value = d.agent_id
+    dingtalkRedirect.value = d.redirect
+    dingtalkSecretSet.value = d.app_secret_set
+  } catch {
+    dingtalkMsg.value = '加载钉钉配置失败'
+  }
+}
+
+async function saveDingtalk() {
+  savingDingtalk.value = true
+  dingtalkMsg.value = ''
+  try {
+    const body = {
+      app_key: dingtalkAppKey.value,
+      agent_id: dingtalkAgentId.value,
+      redirect: dingtalkRedirect.value,
+    }
+    if (dingtalkSecret.value) body.app_secret = dingtalkSecret.value
+    await api.adminSaveDingtalk(body)
+    dingtalkSecret.value = ''
+    dingtalkMsg.value = '已保存'
+    await loadDingtalk()
+  } catch (e) {
+    dingtalkMsg.value = e.message
+  } finally {
+    savingDingtalk.value = false
   }
 }
 
@@ -1489,7 +1537,7 @@ onMounted(() => {
           <h3 class="section-title">机器人</h3>
           <div class="head">
             <span></span>
-            <button class="btn" @click="openBotCreate">＋ 添加机器人</button>
+            <button class="btn" @click="openBotCreate('wecom')">＋ 添加机器人</button>
           </div>
           <p v-if="botMsg" class="msg">{{ botMsg }}</p>
           <table class="table">
@@ -1524,6 +1572,64 @@ onMounted(() => {
           </table>
           <p class="hint" style="margin-top: 10px">
             每个机器人对应企微的一个自建应用。请在企微后台为该应用开通「API 接收消息」，回调地址填该机器人的回调 URL（编辑弹窗内显示），并填写 Token 与 EncodingAESKey。创建/编辑后可在弹窗底部看到回调地址。
+          </p>
+        </section>
+
+        <section v-else-if="active === 'dingtalk'" class="content">
+          <h2>钉钉设置</h2>
+
+          <h3 class="section-title">基础配置</h3>
+          <div class="card">
+            <div class="wecom-grid">
+              <label>AppKey<input v-model="dingtalkAppKey" class="input" placeholder="钉钉应用 AppKey（Client ID）" /></label>
+              <label>AppSecret<input v-model="dingtalkSecret" type="password" class="input" :placeholder="dingtalkSecretSet ? '已设置（留空不修改）' : '钉钉应用 AppSecret'" /></label>
+              <label>AgentId<input v-model="dingtalkAgentId" class="input" placeholder="钉钉应用 AgentId" /></label>
+              <label>回调域名<input v-model="dingtalkRedirect" class="input" placeholder="如 https://your.domain" /></label>
+            </div>
+            <div class="card-foot">
+              <p v-if="dingtalkMsg" class="hint">{{ dingtalkMsg }}</p>
+              <button class="btn" :disabled="savingDingtalk" @click="saveDingtalk">{{ savingDingtalk ? '保存中…' : '保存钉钉配置' }}</button>
+            </div>
+          </div>
+
+          <h3 class="section-title">机器人</h3>
+          <div class="head">
+            <span></span>
+            <button class="btn" @click="openBotCreate('dingtalk')">＋ 添加机器人</button>
+          </div>
+          <p v-if="botMsg" class="msg">{{ botMsg }}</p>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>AgentId</th>
+                <th>联网</th>
+                <th>知识库</th>
+                <th>MCP</th>
+                <th>启用</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="b in bots" :key="b.id">
+                <td>{{ b.name }}</td>
+                <td class="mono">{{ b.agent_id }}</td>
+                <td>{{ b.web_search ? '✓' : '✕' }}</td>
+                <td>{{ b.kb_ids || '—' }}</td>
+                <td>{{ b.mcp_ids || '—' }}</td>
+                <td>{{ b.enabled ? '✓' : '✕' }}</td>
+                <td class="ops">
+                  <button class="btn btn-edit" @click="openBotEdit(b)">编辑</button>
+                  <button class="btn btn-del" @click="delBot(b)">删除</button>
+                </td>
+              </tr>
+              <tr v-if="!bots.length">
+                <td colspan="7" class="empty">暂无钉钉机器人，点击「添加机器人」创建</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="hint" style="margin-top: 10px">
+            每个钉钉机器人对应钉钉的一个企业内部应用。请在该应用后台开启「消息接收」HTTP 回调，回调地址填该机器人的回调 URL（编辑弹窗内显示），并填写 Token 与 EncodingAESKey。
           </p>
         </section>
 
@@ -1740,9 +1846,9 @@ onMounted(() => {
         <h3>{{ editingBot.id ? '编辑机器人' : '添加机器人' }}</h3>
         <label>名称<input v-model="editingBot.name" class="input" placeholder="如 客服机器人" /></label>
         <div class="form-2">
-          <label>CorpID<input v-model="editingBot.corp_id" class="input" placeholder="留空使用企微设置中的 CorpID" /></label>
-          <label>应用 Secret<input v-model="editingBot.secret" type="password" class="input" :placeholder="editingBot.id ? '留空不修改' : '应用 Secret'" /></label>
-          <label>AgentId<input v-model="editingBot.agent_id" class="input" placeholder="应用 AgentId" /></label>
+          <label>{{ botIsDingtalk ? 'AppKey' : 'CorpID' }}<input v-model="editingBot.corp_id" class="input" :placeholder="botIsDingtalk ? '钉钉应用 AppKey' : '留空使用企微设置中的 CorpID'" /></label>
+          <label>{{ botIsDingtalk ? 'AppSecret' : '应用 Secret' }}<input v-model="editingBot.secret" type="password" class="input" :placeholder="editingBot.id ? '留空不修改' : (botIsDingtalk ? '钉钉应用 AppSecret' : '应用 Secret')" /></label>
+          <label>AgentId<input v-model="editingBot.agent_id" class="input" :placeholder="botIsDingtalk ? '钉钉应用 AgentId' : '应用 AgentId'" /></label>
           <label>Token<input v-model="editingBot.token" type="password" class="input" :placeholder="editingBot.id ? (editingBot.token_masked || '已设置（留空不修改）') : '回调 Token'" /></label>
           <label>EncodingAESKey<input v-model="editingBot.aes_key" type="password" class="input" :placeholder="editingBot.id ? '已设置（留空不修改）' : 'EncodingAESKey'" /></label>
         </div>
@@ -1792,7 +1898,7 @@ onMounted(() => {
         <p v-if="editingBot.id" class="hint" style="margin-top: 8px">
           回调地址：<code>{{ editingBot.callback_url }}</code>
         </p>
-        <p v-if="!editingBot.id" class="hint" style="margin-top: 8px">保存后可在此查看回调地址，填入企微后台。</p>
+        <p v-if="!editingBot.id" class="hint" style="margin-top: 8px">保存后可在此查看回调地址，填入{{ botIsDingtalk ? '钉钉' : '企微' }}后台。</p>
         <div class="foot">
           <button class="btn btn-outline" @click="editingBot = null">取消</button>
           <button class="btn" :disabled="savingBot" @click="saveBot">{{ savingBot ? '保存中…' : '保存' }}</button>

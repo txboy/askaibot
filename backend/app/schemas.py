@@ -13,6 +13,10 @@ class SMSVerifyRequest(BaseModel):
     code: str
 
 
+class DingtalkCodeRequest(BaseModel):
+    code: str
+
+
 class NicknameUpdate(BaseModel):
     nickname: str
 
@@ -171,6 +175,20 @@ class WecomUpdate(BaseModel):
     wecom_redirect: Optional[str] = None
 
 
+class DingtalkOut(BaseModel):
+    app_key: str
+    agent_id: str
+    redirect: str
+    app_secret_set: bool
+
+
+class DingtalkUpdate(BaseModel):
+    app_key: Optional[str] = None
+    app_secret: Optional[str] = None
+    agent_id: Optional[str] = None
+    redirect: Optional[str] = None
+
+
 class AdminPasswordChange(BaseModel):
     old_password: str
     new_password: str
@@ -294,6 +312,7 @@ class KnowledgeBaseTestRequest(BaseModel):
 
 class WecomBotCreate(BaseModel):
     name: str
+    provider: Optional[str] = "wecom"
     corp_id: Optional[str] = ""
     secret: Optional[str] = ""
     agent_id: Optional[str] = ""
@@ -310,6 +329,7 @@ class WecomBotCreate(BaseModel):
 
 class WecomBotUpdate(BaseModel):
     name: Optional[str] = None
+    provider: Optional[str] = None
     corp_id: Optional[str] = None
     secret: Optional[str] = None
     agent_id: Optional[str] = None
@@ -327,6 +347,7 @@ class WecomBotUpdate(BaseModel):
 class WecomBotOut(BaseModel):
     id: int
     name: str
+    provider: str
     corp_id: str
     agent_id: str
     token_masked: str

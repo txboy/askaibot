@@ -23,6 +23,20 @@ const qrUrl = ref('')
 const phoneEnabled = ref(false)
 const wecomEnabled = ref(false)
 
+const dingtalkMode = ref('')
+const dingtalkLoginUrl = ref('')
+const dingtalkQrUrl = ref('')
+const dingtalkEnabled = ref(false)
+const inDingtalkApp = ref(false)
+const dingtalkCorpId = ref('')
+
+function detectDingtalk() {
+  if (typeof window === 'undefined') return false
+  if (window.dd && window.dd.runtime) return true
+  const ua = navigator.userAgent || ''
+  return /DingTalk/i.test(ua) || /dingtalk/i.test(ua)
+}
+
 onMounted(async () => {
   const token = route.query.token
   if (token) {
@@ -47,9 +61,16 @@ onMounted(async () => {
     const w = await api.getWecom()
     wecomEnabled.value = !!w.enabled
   } catch {}
+  try {
+    const d = await api.getDingtalk()
+    dingtalkEnabled.value = !!d.enabled
+  } catch {}
+  inDingtalkApp.value = detectDingtalk()
+
   if (phoneEnabled.value) tab.value = 'phone'
   else if (wecomEnabled.value) tab.value = 'wecom'
-  if (!phoneEnabled.value && !wecomEnabled.value) {
+  else if (dingtalkEnabled.value) tab.value = 'dingtalk'
+  if (!phoneEnabled.value && !wecomEnabled.value && !dingtalkEnabled.value) {
     msg.value = '暂无可用登录方式，请联系管理员配置'
     return
   }
@@ -65,6 +86,18 @@ onMounted(async () => {
       qrUrl.value = await QRCode.toDataURL(r.login_url, { margin: 1, width: 180, color: { dark: '#3b2c22', light: '#ffffff' } })
     } catch (e) {
       msg.value = '加载企业微信登录失败: ' + e.message
+    }
+  }
+  if (dingtalkEnabled.value) {
+    try {
+      const r = await api.dingtalkQrcode()
+      dingtalkMode.value = r.mode
+      if (r.mode !== 'disabled') {
+        dingtalkLoginUrl.value = r.login_url
+        dingtalkQrUrl.value = await QRCode.toDataURL(r.login_url, { margin: 1, width: 180, color: { dark: '#3b2c22', light: '#ffffff' } })
+      }
+    } catch (e) {
+      msg.value = '加载钉钉登录失败: ' + e.message
     }
   }
 })
@@ -102,6 +135,36 @@ async function loginPhone() {
 function wecomLogin() {
   window.location.href = wecomLoginUrl.value
 }
+
+function dingtalkLogin() {
+  window.location.href = dingtalkLoginUrl.value
+}
+
+async function dingtalkFreeLogin() {
+  if (!window.dd || !window.dd.runtime || !dingtalkCorpId.value) {
+    return dingtalkLogin()
+  }
+  loggingIn.value = true
+  msg.value = ''
+  window.dd.runtime.permission.requestAuthCode({
+    corpId: dingtalkCorpId.value,
+    onSuccess: async (res) => {
+      try {
+        const r = await api.dingtalkFreeLogin(res.code)
+        store.setAuth(r.token, r.user)
+        router.replace('/')
+      } catch (e) {
+        msg.value = e.message
+      } finally {
+        loggingIn.value = false
+      }
+    },
+    onFail: () => {
+      loggingIn.value = false
+      dingtalkLogin()
+    },
+  })
+}
 </script>
 
 <template>
@@ -114,6 +177,7 @@ function wecomLogin() {
       <div class="tabs">
         <button v-if="phoneEnabled" :class="{ active: tab === 'phone' }" @click="tab = 'phone'">手机号登录</button>
         <button v-if="wecomEnabled" :class="{ active: tab === 'wecom' }" @click="tab = 'wecom'">企业微信登录</button>
+        <button v-if="dingtalkEnabled" :class="{ active: tab === 'dingtalk' }" @click="tab = 'dingtalk'">钉钉登录</button>
       </div>
 
       <div v-if="tab === 'phone' && phoneEnabled" class="panel">
@@ -139,6 +203,25 @@ function wecomLogin() {
           <p class="tip">{{ wecomMode === 'real' ? '使用企业微信扫码登录' : '当前为模拟模式，点击下方按钮体验登录' }}</p>
           <button class="btn full" @click="wecomLogin">
             {{ wecomMode === 'real' ? '打开企业微信授权' : '模拟扫码登录' }}
+          </button>
+        </template>
+      </div>
+
+      <div v-else-if="tab === 'dingtalk' && dingtalkEnabled" class="panel wecom-panel">
+        <template v-if="dingtalkMode === 'disabled'">
+          <p class="tip">钉钉登录未配置或调试未开启</p>
+        </template>
+        <template v-else-if="inDingtalkApp">
+          <p class="tip">检测到钉钉环境，使用钉钉一键登录</p>
+          <button class="btn full" :disabled="loggingIn" @click="dingtalkFreeLogin">
+            {{ loggingIn ? '登录中…' : '钉钉一键登录' }}
+          </button>
+        </template>
+        <template v-else>
+          <img v-if="dingtalkQrUrl" :src="dingtalkQrUrl" class="qr" alt="钉钉登录二维码" />
+          <p class="tip">{{ dingtalkMode === 'real' ? '使用钉钉扫一扫登录' : '当前为模拟模式，点击下方按钮体验登录' }}</p>
+          <button class="btn full" @click="dingtalkLogin">
+            {{ dingtalkMode === 'real' ? '打开钉钉授权' : '模拟扫码登录' }}
           </button>
         </template>
       </div>

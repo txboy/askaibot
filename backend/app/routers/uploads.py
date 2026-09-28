@@ -167,3 +167,10 @@ def get_wecom_enabled(db: Session = Depends(get_db)):
         setting.wecom_corp_id and setting.wecom_secret and setting.wecom_agent_id
     )
     return {"enabled": bool(real or setting.debug_mode)}
+
+
+@router.get("/config/dingtalk")
+def get_dingtalk_enabled(db: Session = Depends(get_db)):
+    setting = get_setting(db)
+    real = bool(setting.dingtalk_app_key and setting.dingtalk_app_secret)
+    return {"enabled": bool(real or setting.debug_mode)}

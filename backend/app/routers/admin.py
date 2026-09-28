@@ -200,6 +200,43 @@ def update_wecom(
     )
 
 
+def _dingtalk_out(setting: models.Setting) -> schemas.DingtalkOut:
+    return schemas.DingtalkOut(
+        app_key=setting.dingtalk_app_key or "",
+        agent_id=setting.dingtalk_agent_id or "",
+        redirect=setting.dingtalk_redirect or "",
+        app_secret_set=bool(setting.dingtalk_app_secret),
+    )
+
+
+@router.get("/dingtalk", response_model=schemas.DingtalkOut)
+def get_dingtalk(
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    return _dingtalk_out(get_setting(db))
+
+
+@router.put("/dingtalk", response_model=schemas.DingtalkOut)
+def update_dingtalk(
+    payload: schemas.DingtalkUpdate,
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    setting = get_setting(db)
+    if payload.app_key is not None:
+        setting.dingtalk_app_key = payload.app_key
+    if payload.app_secret:
+        setting.dingtalk_app_secret = payload.app_secret
+    if payload.agent_id is not None:
+        setting.dingtalk_agent_id = payload.agent_id
+    if payload.redirect is not None:
+        setting.dingtalk_redirect = payload.redirect
+    db.commit()
+    db.refresh(setting)
+    return _dingtalk_out(setting)
+
+
 @router.get("/search", response_model=schemas.SearchOut)
 def get_search(
     admin: models.Admin = Depends(get_current_admin),
@@ -395,7 +432,10 @@ async def test_knowledge_base(
     return {"ok": True, "count": len(results), "results": results}
 
 
-def _bot_callback_url(db: Session, bot_id: int) -> str:
+def _bot_callback_url(db: Session, bot_id: int, provider: str = "wecom") -> str:
+    if provider == "dingtalk":
+        base = (get_setting(db).dingtalk_redirect or config.frontend_url).rstrip("/")
+        return f"{base}/api/dingtalk/bot/{bot_id}/callback"
     base = (get_setting(db).wecom_redirect or config.frontend_url).rstrip("/")
     return f"{base}/api/wecom/bot/{bot_id}/callback"
 
@@ -404,6 +444,7 @@ def _bot_out(bot: models.WecomBot, db: Session) -> schemas.WecomBotOut:
     return schemas.WecomBotOut(
         id=bot.id,
         name=bot.name,
+        provider=bot.provider,
         corp_id=bot.corp_id,
         agent_id=bot.agent_id,
         token_masked=mask_key(bot.token),
@@ -415,16 +456,20 @@ def _bot_out(bot: models.WecomBot, db: Session) -> schemas.WecomBotOut:
         endpoint_id=bot.endpoint_id,
         model=bot.model,
         enabled=bot.enabled,
-        callback_url=_bot_callback_url(db, bot.id),
+        callback_url=_bot_callback_url(db, bot.id, bot.provider),
     )
 
 
 @router.get("/wecom-bots", response_model=list[schemas.WecomBotOut])
 def list_wecom_bots(
+    provider: str = "wecom",
     admin: models.Admin = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    return [_bot_out(b, db) for b in db.query(models.WecomBot).all()]
+    q = db.query(models.WecomBot)
+    if provider:
+        q = q.filter(models.WecomBot.provider == provider)
+    return [_bot_out(b, db) for b in q.all()]
 
 
 @router.post("/wecom-bots", response_model=schemas.WecomBotOut)
@@ -435,6 +480,7 @@ def create_wecom_bot(
 ):
     bot = models.WecomBot(
         name=payload.name,
+        provider=payload.provider or "wecom",
         corp_id=payload.corp_id or "",
         secret=payload.secret or "",
         agent_id=payload.agent_id or "",
@@ -465,6 +511,7 @@ def update_wecom_bot(
         raise HTTPException(status_code=404, detail="机器人不存在")
     for field in (
         "name",
+        "provider",
         "corp_id",
         "agent_id",
         "token",
