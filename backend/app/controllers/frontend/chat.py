@@ -1,4 +1,6 @@
 import json
+import logging
+import sys
 from datetime import datetime
 
 import httpx
@@ -6,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.config import config
 from app.services import mcp as mcp_core
 from app.services import skills as skill_core
 from app import models, schemas
@@ -14,6 +17,17 @@ from app.common import build_content_parts, get_setting, parse_models
 from app.database import get_db
 from app.services.kb import build_openai_tools, format_kb_context, retrieve_kb
 from app.services.search import format_results, search_web
+
+logger = logging.getLogger("app.chat")
+if config.debug:
+    logger.setLevel(logging.DEBUG)
+    if not logger.handlers:
+        _handler = logging.StreamHandler(sys.stdout)
+        _handler.setLevel(logging.DEBUG)
+        _handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+        )
+        logger.addHandler(_handler)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -29,12 +43,19 @@ def chat(
     base_url = endpoint.base_url.rstrip("/")
     api_key = endpoint.api_key
     model = _resolve_model(payload, endpoint)
+    logger.debug(
+        f"[chat] user={user.id} conv={conversation.id} endpoint={endpoint.name} model={model} base_url={base_url}"
+    )
 
     attachments = _attach_attachments(db, user, conversation, payload.attachment_ids)
     _save_user_message(db, conversation, payload.content, attachments)
+    logger.debug(f"[chat] attachments={len(attachments)}")
 
     history = _load_history(db, conversation)
     openai_messages = _build_openai_messages(db, history)
+    logger.debug(
+        f"[chat] history={len(history)} openai_messages={len(openai_messages)}"
+    )
 
     kb_cfg = _resolve_frontend_kb(db, payload.knowledge_base_id)
     headers = _build_request_headers(api_key)
@@ -43,6 +64,9 @@ def chat(
     search_provider = setting.search_provider or ""
     should_search = _should_search(payload, setting)
     search_tool = _build_search_tool()
+    logger.debug(
+        f"[chat] kb={bool(kb_cfg)} web_search={should_search} search_provider={search_provider!r}"
+    )
 
     request_body = {
         "model": model,
@@ -60,6 +84,7 @@ def chat(
                 current_messages = await _inject_kb_context(
                     kb_cfg, current_messages, payload.content
                 )
+                logger.debug("[chat] kb_context=injected")
 
             (
                 skill_system,
@@ -69,6 +94,9 @@ def chat(
                 kb_mapping,
             ) = await _build_tool_plan(
                 db, conversation, user, should_search, search_tool
+            )
+            logger.debug(
+                f"[chat] tools search={should_search} mcp={len(mcp_mapping)} skill={len(skill_mapping)} kb={len(kb_mapping)}"
             )
             if skill_system:
                 current_messages = skill_system + current_messages
@@ -91,12 +119,16 @@ def chat(
                         except StopAsyncIteration:
                             break
                 if result["aborted"]:
+                    logger.debug(f"[chat] round={round_index + 1} aborted")
                     return
                 round_full = result["full"]
                 round_usage = result["usage"]
                 tool_calls_map = result["tool_calls_map"]
                 full.extend(round_full)
                 usage_tokens = round_usage or usage_tokens
+                logger.debug(
+                    f"[chat] round={round_index + 1} text_len={len(round_full)} usage={round_usage} tool_calls={len(tool_calls_map)}"
+                )
 
                 ready_calls = [
                     tool_calls_map[i]
@@ -117,6 +149,9 @@ def chat(
                         args = json.loads(c["arguments"] or "{}")
                     except Exception:
                         args = {}
+                    logger.debug(
+                        f"[chat] tool_call name={name} args={json.dumps(args, ensure_ascii=False)[:200]}"
+                    )
                     status, content = await _run_tool_call(
                         name,
                         args,
@@ -128,6 +163,9 @@ def chat(
                     )
                     if status:
                         yield f"data: {json.dumps(status)}\n\n"
+                    logger.debug(
+                        f"[chat] tool_result name={name} content_len={len(content)}"
+                    )
                     tool_messages.append(
                         {"role": "tool", "tool_call_id": cid, "content": content}
                     )
@@ -144,12 +182,14 @@ def chat(
                     + tool_messages
                 )
         except Exception as exc:
+            logger.debug(f"[chat] error: {exc}")
             yield f"data: {json.dumps({'error': str(exc)})}\n\n"
 
         assistant_text = "".join(full)
         _save_assistant_message(
             db, conversation, endpoint, assistant_text, usage_tokens
         )
+        logger.debug(f"[chat] done text_len={len(assistant_text)} usage={usage_tokens}")
         yield f"data: {json.dumps({'done': True})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")

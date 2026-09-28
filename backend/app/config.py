@@ -7,6 +7,7 @@ class Config(BaseSettings):
     jwt_expire_minutes: int = 60 * 24 * 7
 
     frontend_url: str = "http://localhost:5173"
+    debug: bool = False
     sms_mock: bool = True
     upload_dir: str = "./data/uploads"
     max_upload_size: int = 20 * 1024 * 1024

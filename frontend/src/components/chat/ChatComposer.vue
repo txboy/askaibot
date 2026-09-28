@@ -1,4 +1,5 @@
 <script setup>
+import { ref, watch } from 'vue'
 import { useChat } from '../../composables/useChat'
 
 const {
@@ -32,6 +33,17 @@ const {
   onKeydown,
   send,
 } = useChat()
+
+const messageInput = ref(null)
+
+function autoResize() {
+  const el = messageInput.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px'
+}
+
+watch(input, autoResize)
 </script>
 
 <template>
@@ -119,10 +131,12 @@ const {
       </button>
       <textarea
         v-model="input"
+        ref="messageInput"
         class="input"
-        rows="2"
+        rows="1"
         placeholder="输入消息，按 Enter 发送，Shift+Enter 换行"
         @keydown="onKeydown"
+        @input="autoResize"
       ></textarea>
       <button class="btn send-btn" :disabled="streaming || (!input.trim() && !pendingAttachments.length)" @click="send">发送</button>
     </div>
@@ -158,6 +172,8 @@ const {
   background: var(--surface);
   cursor: pointer;
   min-width: 0;
+  font-size: 13px;
+  line-height: 1.3;
 }
 
 .endpoint-pick:hover {
@@ -174,6 +190,7 @@ const {
   background: var(--surface);
   color: var(--text-muted);
   font-size: 13px;
+  line-height: 1.3;
   flex-shrink: 0;
 }
 
@@ -236,6 +253,7 @@ const {
   font-size: 20px;
   padding: 4px 8px;
   color: var(--text-muted);
+  align-self: center;
 }
 
 .attach-btn:hover {
@@ -248,10 +266,12 @@ const {
   background: transparent;
   flex: 1;
   max-height: 200px;
+  line-height: 1.5;
 }
 
 .send-btn {
   flex-shrink: 0;
+  line-height: 1.5;
 }
 
 .error {
