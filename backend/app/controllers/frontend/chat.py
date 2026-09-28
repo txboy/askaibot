@@ -22,7 +22,7 @@ logger = logging.getLogger("app.chat")
 if config.debug:
     logger.setLevel(logging.DEBUG)
     if not logger.handlers:
-        _handler = logging.StreamHandler(sys.stdout)
+        _handler = logging.StreamHandler(sys.stderr)
         _handler.setLevel(logging.DEBUG)
         _handler.setFormatter(
             logging.Formatter("%(asctime)s %(levelname)s %(message)s")
@@ -107,6 +107,9 @@ def chat(
                     body["tools"] = base_tools
                 if round_index >= 1:
                     body.pop("tools", None)
+                logger.debug(
+                    f"[chat] llm_request round={round_index + 1} body={json.dumps(body, ensure_ascii=False)}"
+                )
 
                 tool_calls_map = {}
                 result = {}
@@ -377,6 +380,9 @@ async def _inject_kb_context(
     user_content: str,
 ) -> list[dict]:
     """检索前端知识库并把命中上下文作为 system 消息注入到对话前部。"""
+    logger.debug(
+        f"[chat] kb_query provider={kb_cfg.provider} query={user_content!r} top_k={kb_cfg.top_k}"
+    )
     results = await retrieve_kb(
         kb_cfg.provider,
         kb_cfg.base_url,
@@ -386,6 +392,9 @@ async def _inject_kb_context(
         top_k=kb_cfg.top_k,
     )
     context = format_kb_context(results)
+    logger.debug(
+        f"[chat] kb_query_result hits={len(results)} context_len={len(context)}"
+    )
     if context:
         return [{"role": "system", "content": context}] + messages
     return messages
@@ -514,6 +523,7 @@ async def _run_tool_call(
     if name == "web_search":
         status = {"status": "searching"}
         query = args.get("query", "")
+        logger.debug(f"[chat] web_search provider={search_provider!r} query={query!r}")
         try:
             results = await search_web(
                 search_provider,
@@ -522,28 +532,51 @@ async def _run_tool_call(
                 query,
             )
             content = format_results(results)
-        except Exception:
+            logger.debug(
+                f"[chat] web_search_result results={len(results)} content_len={len(content)}"
+            )
+        except Exception as exc:
+            logger.debug(f"[chat] web_search_error err={exc}")
             content = ""
         return status, content
     if name in mcp_mapping:
         server, tool_name = mcp_mapping[name]
         status = {"status": "tool", "server": server.name}
+        logger.debug(
+            f"[chat] mcp_call server={server.name} tool={tool_name} args={json.dumps(args, ensure_ascii=False)}"
+        )
         try:
             content = await mcp_core.call_tool(server, tool_name, args)
+            logger.debug(
+                f"[chat] mcp_result server={server.name} tool={tool_name} content_len={len(content)}"
+            )
         except Exception as exc:
+            logger.debug(
+                f"[chat] mcp_error server={server.name} tool={tool_name} err={exc}"
+            )
             content = f"工具调用失败：{exc}"
         return status, content
     if name in skill_mapping:
         skill, tool = skill_mapping[name]
         status = {"status": "tool", "server": skill.name}
+        logger.debug(
+            f"[chat] skill_call name={skill.name} tool={tool} args={json.dumps(args, ensure_ascii=False)}"
+        )
         try:
             content = await skill_core.call_tool(skill, tool, args)
+            logger.debug(
+                f"[chat] skill_result name={skill.name} tool={tool} content_len={len(content)}"
+            )
         except Exception as exc:
+            logger.debug(f"[chat] skill_error name={skill.name} tool={tool} err={exc}")
             content = f"技能调用失败：{exc}"
         return status, content
     if name in kb_mapping:
         kb = kb_mapping[name]
         status = {"status": "tool", "server": kb.name}
+        logger.debug(
+            f"[chat] kb_call name={kb.name} provider={kb.provider} query={args.get('query', '')!r}"
+        )
         try:
             results = await retrieve_kb(
                 kb.provider,
@@ -554,7 +587,11 @@ async def _run_tool_call(
                 top_k=kb.top_k,
             )
             content = format_kb_context(results) or "（未命中知识库内容）"
+            logger.debug(
+                f"[chat] kb_result name={kb.name} hits={len(results)} content_len={len(content)}"
+            )
         except Exception as exc:
+            logger.debug(f"[chat] kb_error name={kb.name} err={exc}")
             content = f"知识库检索失败：{exc}"
         return status, content
     return None, "该工具不可用，请重试。"

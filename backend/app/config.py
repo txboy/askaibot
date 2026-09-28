@@ -1,4 +1,8 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
+
+_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 
 class Config(BaseSettings):
@@ -22,7 +26,7 @@ class Config(BaseSettings):
     skill_pids_limit: int = 64
 
     class Config:
-        env_file = ".env"
+        env_file = _ENV_FILE
         env_prefix = ""
 
 
