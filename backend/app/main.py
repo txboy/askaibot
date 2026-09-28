@@ -100,6 +100,7 @@ def _ensure_columns() -> None:
             "search_api_key": "VARCHAR DEFAULT ''",
             "search_base_url": "VARCHAR DEFAULT ''",
             "search_auto": "INTEGER DEFAULT 0",
+            "search_scope": "VARCHAR DEFAULT 'global'",
         }
         for name, ddl in search_settings.items():
             if name not in cols:
@@ -181,12 +182,34 @@ def _ensure_columns() -> None:
             "dataset_ids": "VARCHAR DEFAULT ''",
             "top_k": "INTEGER DEFAULT 5",
             "mode": "VARCHAR DEFAULT 'frontend'",
+            "scope": "VARCHAR DEFAULT 'global'",
         }.items():
             if name not in kbcols:
                 with engine.begin() as conn:
                     conn.execute(
                         text(f"ALTER TABLE knowledge_bases ADD COLUMN {name} {ddl}")
                     )
+    if "api_endpoints" in insp.get_table_names():
+        ecols = {c["name"] for c in insp.get_columns("api_endpoints")}
+        if "scope" not in ecols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE api_endpoints ADD COLUMN scope VARCHAR DEFAULT 'global'")
+                )
+    if "mcp_servers" in insp.get_table_names():
+        mcols = {c["name"] for c in insp.get_columns("mcp_servers")}
+        if "scope" not in mcols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE mcp_servers ADD COLUMN scope VARCHAR DEFAULT 'global'")
+                )
+    if "skills" in insp.get_table_names():
+        scols = {c["name"] for c in insp.get_columns("skills")}
+        if "scope" not in scols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE skills ADD COLUMN scope VARCHAR DEFAULT 'global'")
+                )
     if "wecom_bots" in insp.get_table_names():
         bcols = {c["name"] for c in insp.get_columns("wecom_bots")}
         if "provider" not in bcols:

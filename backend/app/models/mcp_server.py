@@ -21,6 +21,7 @@ class McpServer(Base):
     env: Mapped[str] = mapped_column(Text, default="{}")  # JSON
     mode: Mapped[str] = mapped_column(String, default="llm")  # llm / frontend
     enabled: Mapped[int] = mapped_column(Integer, default=1)
+    scope: Mapped[str] = mapped_column(String, default="global")  # global / group
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()

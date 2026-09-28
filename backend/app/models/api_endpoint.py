@@ -17,6 +17,7 @@ class ApiEndpoint(Base):
     models: Mapped[str] = mapped_column(Text, default="")  # 逗号/换行分隔的模型列表
     enabled: Mapped[int] = mapped_column(Integer, default=1)
     is_default: Mapped[int] = mapped_column(Integer, default=0)
+    scope: Mapped[str] = mapped_column(String, default="global")  # global / group
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()

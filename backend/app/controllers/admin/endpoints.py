@@ -17,11 +17,12 @@ from app.common import get_setting, mask_key
 from app.config import config
 from app.database import get_db
 from app.security import hash_password, verify_password
+from app.services import groups as groups_core
 
 router = APIRouter()
 __all__ = ["create_endpoint", "delete_endpoint", "endpoints_usage", "list_endpoints", "update_endpoint"]
 
-def _endpoint_out(e: models.ApiEndpoint) -> schemas.EndpointOut:
+def _endpoint_out(e: models.ApiEndpoint, db: Session) -> schemas.EndpointOut:
     return schemas.EndpointOut(
         id=e.id,
         name=e.name,
@@ -30,6 +31,8 @@ def _endpoint_out(e: models.ApiEndpoint) -> schemas.EndpointOut:
         models=e.models,
         enabled=e.enabled,
         is_default=e.is_default,
+        scope=e.scope or "global",
+        group_ids=groups_core.group_ids_for_resource(db, "endpoint", e.id),
     )
 
 @router.get("/endpoints", response_model=list[schemas.EndpointOut])
@@ -37,7 +40,7 @@ def list_endpoints(
     admin: models.Admin = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    return [_endpoint_out(e) for e in db.query(models.ApiEndpoint).all()]
+    return [_endpoint_out(e, db) for e in db.query(models.ApiEndpoint).all()]
 
 @router.post("/endpoints", response_model=schemas.EndpointOut)
 def create_endpoint(
@@ -52,11 +55,12 @@ def create_endpoint(
         models=payload.models or "",
         enabled=payload.enabled or 1,
         is_default=payload.is_default or 0,
+        scope=payload.scope or "global",
     )
     db.add(endpoint)
     db.commit()
     db.refresh(endpoint)
-    return _endpoint_out(endpoint)
+    return _endpoint_out(endpoint, db)
 
 @router.get("/endpoints/usage")
 def endpoints_usage(
@@ -128,9 +132,15 @@ def update_endpoint(
             db.query(models.ApiEndpoint).filter(
                 models.ApiEndpoint.id != endpoint.id
             ).update({"is_default": 0})
+    if payload.scope is not None:
+        endpoint.scope = payload.scope
     db.commit()
     db.refresh(endpoint)
-    return _endpoint_out(endpoint)
+    if payload.group_ids is not None:
+        groups_core.set_resource_grants(db, "endpoint", endpoint.id, payload.group_ids)
+        db.commit()
+        db.refresh(endpoint)
+    return _endpoint_out(endpoint, db)
 
 @router.delete("/endpoints/{endpoint_id}")
 def delete_endpoint(
@@ -141,6 +151,7 @@ def delete_endpoint(
     endpoint = db.get(models.ApiEndpoint, endpoint_id)
     if not endpoint:
         raise HTTPException(status_code=404, detail="接口不存在")
+    groups_core.set_resource_grants(db, "endpoint", endpoint.id, [])
     db.delete(endpoint)
     db.commit()
     return {"ok": True}

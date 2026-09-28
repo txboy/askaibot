@@ -5,6 +5,7 @@ from app import models, schemas
 from app.auth import get_current_user
 from app.common import parse_models
 from app.database import get_db
+from app.services import groups as groups_core
 
 router = APIRouter(tags=["endpoints"])
 
@@ -22,6 +23,9 @@ def list_public_knowledge_bases(
         )
         .order_by(models.KnowledgeBase.id.asc())
         .all()
+    )
+    kbs = groups_core.filter_accessible(
+        db, user.id if user else None, "knowledge_base", kbs
     )
     return [
         schemas.KnowledgeBasePublic(
@@ -41,6 +45,9 @@ def list_public_endpoints(
         .filter(models.ApiEndpoint.enabled == 1)
         .order_by(models.ApiEndpoint.is_default.desc(), models.ApiEndpoint.id.asc())
         .all()
+    )
+    endpoints = groups_core.filter_accessible(
+        db, user.id if user else None, "endpoint", endpoints
     )
     return [
         schemas.EndpointPublic(

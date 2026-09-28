@@ -1,12 +1,15 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { api } from '../../api'
+import UserScopeControl from '../../components/admin/UserScopeControl.vue'
 
 const searchProvider = ref('')
 const searchApiKey = ref('')
 const searchBaseUrl = ref('')
 const searchAuto = ref(false)
 const searchApiKeySet = ref(false)
+const searchScope = ref('global')
+const searchGroupIds = ref([])
 const searchMsg = ref('')
 const savingSearch = ref(false)
 const searchProviders = [
@@ -25,6 +28,8 @@ async function loadSearch() {
     searchAuto.value = !!r.auto
     searchApiKeySet.value = r.api_key_set
     searchApiKey.value = ''
+    searchScope.value = r.scope || 'global'
+    searchGroupIds.value = (r.group_ids || []).slice()
     searchMsg.value = ''
   } catch (e) {
     searchMsg.value = '加载联网搜索配置失败'
@@ -39,6 +44,8 @@ async function saveSearch() {
       provider: searchProvider.value,
       base_url: searchBaseUrl.value,
       auto: searchAuto.value,
+      scope: searchScope.value,
+      group_ids: searchScope.value === 'group' ? searchGroupIds.value : [],
     }
     if (searchApiKey.value) body.api_key = searchApiKey.value
     const r = await api.adminSaveSearch(body)
@@ -76,6 +83,7 @@ onMounted(loadSearch)
         <input type="checkbox" v-model="searchAuto" />
         <span>自动识别搜索（无需手动开启联网）</span>
       </label>
+      <UserScopeControl v-model:scope="searchScope" v-model:groups="searchGroupIds" />
       <p class="hint" style="margin-top: 8px">
         开启后，聊天可调用联网搜索补充实时信息。手动开启时用户可在输入框旁点「联网」；自动模式下模型按需自主搜索。Tavily / Bing 需 API Key，SearXNG 需自托管地址，DuckDuckGo 免 Key 但结果有限。
       </p>

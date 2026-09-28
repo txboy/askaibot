@@ -39,7 +39,7 @@ def chat(
     db: Session = Depends(get_db),
 ):
     conversation = _get_owned_conversation(db, payload.conversation_id, user.id)
-    endpoint = _resolve_endpoint(db, payload.endpoint_id)
+    endpoint = _resolve_endpoint(db, payload.endpoint_id, user)
     base_url = endpoint.base_url.rstrip("/")
     api_key = endpoint.api_key
     model = _resolve_model(payload, endpoint)
@@ -57,12 +57,12 @@ def chat(
         f"[chat] history={len(history)} openai_messages={len(openai_messages)}"
     )
 
-    kb_cfg = _resolve_frontend_kb(db, payload.knowledge_base_id)
+    kb_cfg = _resolve_frontend_kb(db, payload.knowledge_base_id, user)
     headers = _build_request_headers(api_key)
 
     setting = get_setting(db)
     search_provider = setting.search_provider or ""
-    should_search = _should_search(payload, setting)
+    should_search = _should_search(payload, setting, db, user)
     search_tool = _build_search_tool()
     logger.debug(
         f"[chat] kb={bool(kb_cfg)} web_search={should_search} search_provider={search_provider!r}"
@@ -208,8 +208,12 @@ def _get_owned_conversation(
     return conversation
 
 
-def _resolve_endpoint(db: Session, endpoint_id: int | None) -> models.ApiEndpoint:
-    """解析本次聊天使用的 API 接口：优先用指定的，否则取默认启用的一个。"""
+def _resolve_endpoint(
+    db: Session, endpoint_id: int | None, user: models.User
+) -> models.ApiEndpoint:
+    """解析本次聊天使用的 API 接口：优先用指定的，否则取默认启用的一个；需对当前用户可见。"""
+    from app.services import groups as groups_core
+
     if endpoint_id:
         endpoint = db.get(models.ApiEndpoint, endpoint_id)
         if not endpoint or not endpoint.enabled:
@@ -223,6 +227,10 @@ def _resolve_endpoint(db: Session, endpoint_id: int | None) -> models.ApiEndpoin
         )
     if not endpoint:
         raise HTTPException(status_code=400, detail="未配置可用接口，请联系管理员")
+    if not groups_core.is_accessible(
+        db, user.id, "endpoint", endpoint.id, endpoint.scope
+    ):
+        raise HTTPException(status_code=400, detail="所选接口不可用")
     return endpoint
 
 
@@ -311,14 +319,19 @@ def _build_openai_messages(db: Session, history: list[models.Message]) -> list[d
 
 
 def _resolve_frontend_kb(
-    db: Session, knowledge_base_id: int | None
+    db: Session, knowledge_base_id: int | None, user: models.User
 ) -> models.KnowledgeBase | None:
-    """解析前端选用的知识库，仅接受启用且 mode 为 frontend 的配置，否则返回 None。"""
+    """解析前端选用的知识库，仅接受对当前用户可见、启用且 mode 为 frontend 的配置，否则返回 None。"""
     if not knowledge_base_id:
         return None
+    from app.services import groups as groups_core
+
     kb = db.get(models.KnowledgeBase, knowledge_base_id)
     if kb and kb.enabled and kb.mode == "frontend":
-        return kb
+        if groups_core.is_accessible(
+            db, user.id, "knowledge_base", kb.id, kb.scope
+        ):
+            return kb
     return None
 
 
@@ -330,10 +343,18 @@ def _build_request_headers(api_key: str) -> dict:
     return headers
 
 
-def _should_search(payload: schemas.ChatRequest, setting: models.Setting) -> bool:
-    """判断本轮是否需要联网搜索（请求开启或系统默认开启，且已配置搜索服务）。"""
+def _should_search(
+    payload: schemas.ChatRequest, setting: models.Setting, db: Session, user: models.User
+) -> bool:
+    """判断本轮是否需要联网搜索（请求开启或系统默认开启，且已配置搜索服务，且用户被允许）。"""
+    from app.services import groups as groups_core
+
     search_provider = setting.search_provider or ""
-    return (payload.web_search or bool(setting.search_auto)) and bool(search_provider)
+    if not search_provider:
+        return False
+    if not groups_core.can_search(db, user.id, setting):
+        return False
+    return payload.web_search or bool(setting.search_auto)
 
 
 def _build_search_tool() -> dict:
@@ -408,10 +429,13 @@ async def _build_tool_plan(
     search_tool: dict,
 ):
     """汇整可用工具（联网搜索 + MCP + 技能 + LLM 知识库），返回工具清单、各映射与技能 system 注入。"""
+    from app.services import groups as groups_core
+
     mcp_servers = list(mcp_core.all_servers(db, mode="llm"))
     selected_ids = mcp_core.parse_ids(conversation.mcp_ids)
     if selected_ids:
         mcp_servers.extend(mcp_core.resolve_servers(db, selected_ids, mode="frontend"))
+    mcp_servers = groups_core.filter_accessible(db, user.id, "mcp", mcp_servers)
     mcp_tools, mcp_mapping = await mcp_core.build_openai_tools(mcp_servers)
 
     selected_skill_ids = skill_core.parse_ids(conversation.skill_ids)
@@ -435,6 +459,7 @@ async def _build_tool_plan(
         )
         .all()
     )
+    llm_kbs = groups_core.filter_accessible(db, user.id, "knowledge_base", llm_kbs)
     kb_tools, kb_mapping = build_openai_tools(llm_kbs)
 
     base_tools: list[dict] = []

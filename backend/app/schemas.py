@@ -142,6 +142,7 @@ class EndpointCreate(BaseModel):
     models: Optional[str] = ""  # 逗号分隔
     enabled: Optional[int] = 1
     is_default: Optional[int] = 0
+    scope: Optional[str] = "global"  # global / group
 
 
 class EndpointUpdate(BaseModel):
@@ -151,6 +152,8 @@ class EndpointUpdate(BaseModel):
     models: Optional[str] = None
     enabled: Optional[int] = None
     is_default: Optional[int] = None
+    scope: Optional[str] = None
+    group_ids: Optional[list[int]] = None
 
 
 class EndpointOut(BaseModel):
@@ -161,6 +164,8 @@ class EndpointOut(BaseModel):
     models: str
     enabled: int
     is_default: int
+    scope: str = "global"
+    group_ids: list[int] = []
 
     class Config:
         from_attributes = True
@@ -290,6 +295,8 @@ class SearchOut(BaseModel):
     base_url: str
     auto: bool
     api_key_set: bool
+    scope: str = "global"
+    group_ids: list[int] = []
 
 
 class SearchUpdate(BaseModel):
@@ -297,6 +304,8 @@ class SearchUpdate(BaseModel):
     api_key: Optional[str] = None
     base_url: Optional[str] = None
     auto: Optional[bool] = None
+    scope: Optional[str] = None
+    group_ids: Optional[list[int]] = None
 
 
 class KnowledgeBaseCreate(BaseModel):
@@ -309,6 +318,7 @@ class KnowledgeBaseCreate(BaseModel):
     mode: Optional[str] = "frontend"
     description: Optional[str] = ""
     enabled: Optional[int] = 1
+    scope: Optional[str] = "global"
 
 
 class KnowledgeBaseUpdate(BaseModel):
@@ -321,6 +331,8 @@ class KnowledgeBaseUpdate(BaseModel):
     mode: Optional[str] = None
     description: Optional[str] = None
     enabled: Optional[int] = None
+    scope: Optional[str] = None
+    group_ids: Optional[list[int]] = None
 
 
 class KnowledgeBaseOut(BaseModel):
@@ -334,6 +346,8 @@ class KnowledgeBaseOut(BaseModel):
     mode: str
     description: str
     enabled: int
+    scope: str = "global"
+    group_ids: list[int] = []
 
     class Config:
         from_attributes = True
@@ -451,6 +465,7 @@ class McpServerCreate(BaseModel):
     env: Optional[str] = "{}"
     mode: Optional[str] = "llm"
     enabled: Optional[int] = 1
+    scope: Optional[str] = "global"
 
 
 class McpServerUpdate(BaseModel):
@@ -464,6 +479,8 @@ class McpServerUpdate(BaseModel):
     env: Optional[str] = None
     mode: Optional[str] = None
     enabled: Optional[int] = None
+    scope: Optional[str] = None
+    group_ids: Optional[list[int]] = None
 
 
 class McpToolOut(BaseModel):
@@ -484,6 +501,8 @@ class McpServerOut(BaseModel):
     env_set: bool
     mode: str
     enabled: int
+    scope: str = "global"
+    group_ids: list[int] = []
     tools: list[McpToolOut] = []
 
     class Config:
@@ -512,6 +531,7 @@ class SkillOut(BaseModel):
     enabled: int
     tools: list[SkillToolOut] = []
     user_ids: list[int] = []
+    group_ids: list[int] = []
 
     class Config:
         from_attributes = True
@@ -523,6 +543,7 @@ class SkillUpdate(BaseModel):
     scope: Optional[str] = None
     enabled: Optional[int] = None
     user_ids: Optional[list[int]] = []
+    group_ids: Optional[list[int]] = []
 
 
 class SkillPublic(BaseModel):
@@ -535,3 +556,37 @@ class SkillPublic(BaseModel):
 class SkillTestRequest(BaseModel):
     tool: str
     args: dict = {}
+
+
+class GroupGrantMap(BaseModel):
+    endpoint: list[int] = []
+    knowledge_base: list[int] = []
+    mcp: list[int] = []
+    search: list[int] = []
+    skill: list[int] = []
+
+
+class GroupCreate(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    member_ids: list[int] = []
+    grants: GroupGrantMap = GroupGrantMap()
+
+
+class GroupUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    member_ids: Optional[list[int]] = None
+    grants: Optional[GroupGrantMap] = None
+
+
+class GroupOut(BaseModel):
+    id: int
+    name: str
+    description: str
+    member_ids: list[int] = []
+    member_count: int = 0
+    grants: GroupGrantMap = GroupGrantMap()
+
+    class Config:
+        from_attributes = True

@@ -160,9 +160,14 @@ def get_sms_enabled(db: Session = Depends(get_db)):
 
 
 @router.get("/config/search")
-def get_search_enabled(db: Session = Depends(get_db)):
+def get_search_enabled(
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     setting = get_setting(db)
-    return {"enabled": bool(setting.search_provider)}
+    from app.services import groups as groups_core
+
+    return {"enabled": groups_core.can_search(db, user.id if user else None, setting)}
 
 
 @router.get("/config/wecom")

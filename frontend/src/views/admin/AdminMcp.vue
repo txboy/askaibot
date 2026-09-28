@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { api } from '../../api'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import { useConfirm } from '../../composables/useConfirm'
+import UserScopeControl from '../../components/admin/UserScopeControl.vue'
 
 const mcps = ref([])
 const mcpMsg = ref('')
@@ -40,6 +41,8 @@ function openMcpCreate() {
     env: '{}',
     mode: 'llm',
     enabled: 1,
+    scope: 'global',
+    group_ids: [],
     tools: [],
   }
 }
@@ -57,6 +60,8 @@ function openMcpEdit(m) {
     env: m.env || '{}',
     mode: m.mode,
     enabled: m.enabled,
+    scope: m.scope || 'global',
+    group_ids: (m.group_ids || []).slice(),
     tools: m.tools || [],
   }
 }
@@ -78,6 +83,8 @@ async function saveMcp() {
       env: f.env || '{}',
       mode: f.mode,
       enabled: f.enabled,
+      scope: f.scope,
+      group_ids: f.scope === 'group' ? f.group_ids : [],
     }
     if (f.transport === 'http' && f.headers) body.headers = f.headers
     if (f.id) {
@@ -195,6 +202,7 @@ onMounted(loadMcps)
           </select>
         </label>
         <label class="check"><input type="checkbox" v-model="editingMcp.enabled" :true-value="1" :false-value="0" /> 启用</label>
+        <UserScopeControl v-model:scope="editingMcp.scope" v-model:groups="editingMcp.group_ids" />
         <div v-if="editingMcp.tools.length" class="mcp-tools">
           <strong>已发现工具：</strong>
           <ul class="tools-list">

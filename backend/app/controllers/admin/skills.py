@@ -17,6 +17,7 @@ from app.common import get_setting, mask_key
 from app.config import config
 from app.database import get_db
 from app.security import hash_password, verify_password
+from app.services import groups as groups_core
 
 router = APIRouter()
 __all__ = ["create_skill", "delete_skill", "list_skills", "test_skill", "update_skill"]
@@ -50,6 +51,7 @@ def _skill_out(skill: models.Skill, db: Session) -> schemas.SkillOut:
             for t in tools
         ],
         user_ids=user_ids,
+        group_ids=groups_core.group_ids_for_resource(db, "skill", skill.id),
     )
 
 @router.get("/skills", response_model=list[schemas.SkillOut])
@@ -129,8 +131,8 @@ def update_skill(
     if payload.description is not None:
         skill.description = payload.description
     if payload.scope is not None:
-        if payload.scope not in ("global", "user"):
-            raise HTTPException(status_code=400, detail="scope 仅支持 global/user")
+        if payload.scope not in ("global", "user", "group"):
+            raise HTTPException(status_code=400, detail="scope 仅支持 global/user/group")
         skill.scope = payload.scope
     if payload.enabled is not None:
         skill.enabled = payload.enabled
@@ -142,6 +144,10 @@ def update_skill(
             db.add(models.SkillAccess(skill_id=skill.id, user_id=uid))
     db.commit()
     db.refresh(skill)
+    if payload.group_ids is not None:
+        groups_core.set_resource_grants(db, "skill", skill.id, payload.group_ids)
+        db.commit()
+        db.refresh(skill)
     return _skill_out(skill, db)
 
 @router.delete("/skills/{skill_id}")
@@ -158,6 +164,7 @@ def delete_skill(
     db.query(models.SkillAccess).filter(
         models.SkillAccess.skill_id == skill.id
     ).delete()
+    groups_core.set_resource_grants(db, "skill", skill.id, [])
     db.delete(skill)
     db.commit()
     return {"ok": True}

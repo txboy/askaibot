@@ -178,18 +178,25 @@ def resolve_skills_by_ids(db, ids: list[int]) -> list[models.Skill]:
 
 
 def user_skills(db, user_id: int) -> list[models.Skill]:
-    """当前用户可用的技能：global 开启的 + 分配给该用户的（scope=user）。"""
+    """当前用户可用的技能：global 开启的 + 分配给该用户的（scope=user） + 所在组被授权的（scope=group）。"""
     access_ids = (
         db.query(models.SkillAccess.skill_id)
         .filter(models.SkillAccess.user_id == user_id)
         .scalar_subquery()
     )
+    from app.services import groups as groups_core
+
+    granted_ids = groups_core.accessible_ids(db, user_id, "skill")
     return (
         db.query(models.Skill)
         .filter(
             models.Skill.enabled == 1,
             (models.Skill.scope == "global")
-            | (models.Skill.id.in_(access_ids)),
+            | (models.Skill.id.in_(access_ids))
+            | (
+                (models.Skill.scope == "group")
+                & (models.Skill.id.in_([g for g in granted_ids]))
+            ),
         )
         .all()
     )

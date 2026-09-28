@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { api } from '../../api'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import { useConfirm } from '../../composables/useConfirm'
+import UserScopeControl from '../../components/admin/UserScopeControl.vue'
 
 const skills = ref([])
 const skillMsg = ref('')
@@ -17,6 +18,7 @@ const confirmDlg = useConfirm()
 const skillScopes = [
   { value: 'global', label: '全部用户' },
   { value: 'user', label: '指定用户' },
+  { value: 'group', label: '按组授权' },
 ]
 
 async function loadSkills() {
@@ -56,6 +58,7 @@ function openSkillEdit(s) {
     scope: s.scope,
     enabled: s.enabled,
     user_ids: (s.user_ids || []).slice(),
+    group_ids: (s.group_ids || []).slice(),
   }
   if (users.value.length === 0) api.adminUsers().then((u) => (users.value = u)).catch(() => {})
 }
@@ -79,6 +82,7 @@ async function saveSkill() {
       scope: f.scope,
       enabled: f.enabled,
       user_ids: f.scope === 'user' ? f.user_ids : [],
+      group_ids: f.scope === 'group' ? (f.group_ids || []) : [],
     })
     editingSkill.value = null
     await loadSkills()
@@ -163,7 +167,7 @@ onMounted(loadSkills)
         <tr v-for="s in skills" :key="s.id">
           <td>{{ s.name }}</td>
           <td>{{ s.description || '—' }}</td>
-          <td>{{ s.scope === 'user' ? '指定用户' : '全部用户' }}</td>
+          <td>{{ s.scope === 'user' ? '指定用户' : s.scope === 'group' ? '按组授权' : '全部用户' }}</td>
           <td>{{ s.tools?.length || 0 }}</td>
           <td>{{ s.enabled ? '✓' : '✕' }}</td>
           <td class="ops">
@@ -198,6 +202,9 @@ onMounted(loadSkills)
               <span v-if="!users.length" class="hint">暂无用户</span>
             </div>
           </label>
+        </template>
+        <template v-else-if="editingSkill.scope === 'group'">
+          <UserScopeControl v-model:scope="editingSkill.scope" v-model:groups="editingSkill.group_ids" />
         </template>
         <label class="check"><input type="checkbox" v-model="editingSkill.enabled" :true-value="1" :false-value="0" /> 启用</label>
         <div class="foot">

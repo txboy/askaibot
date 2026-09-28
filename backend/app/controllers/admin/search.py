@@ -17,6 +17,7 @@ from app.common import get_setting, mask_key
 from app.config import config
 from app.database import get_db
 from app.security import hash_password, verify_password
+from app.services import groups as groups_core
 
 router = APIRouter()
 __all__ = ["get_search", "update_search"]
@@ -32,6 +33,8 @@ def get_search(
         base_url=setting.search_base_url,
         auto=bool(setting.search_auto),
         api_key_set=bool(setting.search_api_key),
+        scope=setting.search_scope or "global",
+        group_ids=groups_core.group_ids_for_resource(db, "search", 0),
     )
 
 @router.put("/search", response_model=schemas.SearchOut)
@@ -49,11 +52,18 @@ def update_search(
         setting.search_base_url = payload.base_url
     if payload.auto is not None:
         setting.search_auto = 1 if payload.auto else 0
+    if payload.scope is not None:
+        setting.search_scope = payload.scope
     db.commit()
     db.refresh(setting)
+    if payload.group_ids is not None:
+        groups_core.set_resource_grants(db, "search", 0, payload.group_ids)
+        db.commit()
     return schemas.SearchOut(
         provider=setting.search_provider,
         base_url=setting.search_base_url,
         auto=bool(setting.search_auto),
         api_key_set=bool(setting.search_api_key),
+        scope=setting.search_scope or "global",
+        group_ids=groups_core.group_ids_for_resource(db, "search", 0),
     )

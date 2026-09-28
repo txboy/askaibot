@@ -17,11 +17,12 @@ from app.common import get_setting, mask_key
 from app.config import config
 from app.database import get_db
 from app.security import hash_password, verify_password
+from app.services import groups as groups_core
 
 router = APIRouter()
 __all__ = ["create_knowledge_base", "delete_knowledge_base", "list_knowledge_bases", "test_knowledge_base", "update_knowledge_base"]
 
-def _kb_out(kb: models.KnowledgeBase) -> schemas.KnowledgeBaseOut:
+def _kb_out(kb: models.KnowledgeBase, db: Session) -> schemas.KnowledgeBaseOut:
     return schemas.KnowledgeBaseOut(
         id=kb.id,
         name=kb.name,
@@ -33,6 +34,8 @@ def _kb_out(kb: models.KnowledgeBase) -> schemas.KnowledgeBaseOut:
         mode=kb.mode,
         description=kb.description,
         enabled=kb.enabled,
+        scope=kb.scope or "global",
+        group_ids=groups_core.group_ids_for_resource(db, "knowledge_base", kb.id),
     )
 
 @router.get("/knowledge-bases", response_model=list[schemas.KnowledgeBaseOut])
@@ -40,7 +43,7 @@ def list_knowledge_bases(
     admin: models.Admin = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    return [_kb_out(kb) for kb in db.query(models.KnowledgeBase).all()]
+    return [_kb_out(kb, db) for kb in db.query(models.KnowledgeBase).all()]
 
 @router.post("/knowledge-bases", response_model=schemas.KnowledgeBaseOut)
 def create_knowledge_base(
@@ -58,11 +61,12 @@ def create_knowledge_base(
         mode=payload.mode or "frontend",
         description=payload.description or "",
         enabled=payload.enabled or 1,
+        scope=payload.scope or "global",
     )
     db.add(kb)
     db.commit()
     db.refresh(kb)
-    return _kb_out(kb)
+    return _kb_out(kb, db)
 
 @router.put("/knowledge-bases/{kb_id}", response_model=schemas.KnowledgeBaseOut)
 def update_knowledge_base(
@@ -92,9 +96,15 @@ def update_knowledge_base(
         kb.description = payload.description
     if payload.enabled is not None:
         kb.enabled = payload.enabled
+    if payload.scope is not None:
+        kb.scope = payload.scope
     db.commit()
     db.refresh(kb)
-    return _kb_out(kb)
+    if payload.group_ids is not None:
+        groups_core.set_resource_grants(db, "knowledge_base", kb.id, payload.group_ids)
+        db.commit()
+        db.refresh(kb)
+    return _kb_out(kb, db)
 
 @router.delete("/knowledge-bases/{kb_id}")
 def delete_knowledge_base(
@@ -105,6 +115,7 @@ def delete_knowledge_base(
     kb = db.get(models.KnowledgeBase, kb_id)
     if not kb:
         raise HTTPException(status_code=404, detail="知识库不存在")
+    groups_core.set_resource_grants(db, "knowledge_base", kb.id, [])
     db.delete(kb)
     db.commit()
     return {"ok": True}

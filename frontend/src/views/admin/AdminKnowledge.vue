@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { api } from '../../api'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import { useConfirm } from '../../composables/useConfirm'
+import UserScopeControl from '../../components/admin/UserScopeControl.vue'
 
 const kbs = ref([])
 const kbMsg = ref('')
@@ -22,7 +23,7 @@ async function loadKbs() {
 }
 
 function openKbCreate() {
-  editingKb.value = { name: '', provider: 'dify', base_url: '', api_key: '', dataset_ids: '', top_k: 5, mode: 'frontend', description: '', enabled: 1 }
+  editingKb.value = { name: '', provider: 'dify', base_url: '', api_key: '', dataset_ids: '', top_k: 5, mode: 'frontend', description: '', enabled: 1, scope: 'global', group_ids: [] }
   kbTestResult.value = ''
 }
 
@@ -38,6 +39,8 @@ function openKbEdit(kb) {
     mode: kb.mode || 'frontend',
     description: kb.description,
     enabled: kb.enabled,
+    scope: kb.scope || 'global',
+    group_ids: (kb.group_ids || []).slice(),
   }
   kbTestResult.value = ''
 }
@@ -49,7 +52,7 @@ async function saveKb() {
   savingKb.value = true
   kbMsg.value = ''
   try {
-    const body = { name: f.name, provider: f.provider, base_url: f.base_url, dataset_ids: f.dataset_ids || '', top_k: Number(f.top_k) || 5, mode: f.mode, description: f.description || '', enabled: f.enabled }
+    const body = { name: f.name, provider: f.provider, base_url: f.base_url, dataset_ids: f.dataset_ids || '', top_k: Number(f.top_k) || 5, mode: f.mode, description: f.description || '', enabled: f.enabled, scope: f.scope, group_ids: f.scope === 'group' ? f.group_ids : [] }
     if (f.api_key) body.api_key = f.api_key
     if (f.id) {
       await api.adminUpdateKnowledgeBase(f.id, body)
@@ -173,6 +176,7 @@ onMounted(loadKbs)
         <label>返回条数（top_k）<input v-model="editingKb.top_k" type="number" class="input" min="1" /></label>
         <label>说明<textarea v-model="editingKb.description" class="input" rows="2" placeholder="知识库简介（可选）"></textarea></label>
         <label class="check"><input type="checkbox" v-model="editingKb.enabled" :true-value="1" :false-value="0" /> 启用</label>
+        <UserScopeControl v-model:scope="editingKb.scope" v-model:groups="editingKb.group_ids" />
         <div class="kb-test">
           <button class="btn btn-outline" :disabled="testingKb" @click="testKb">{{ testingKb ? '测试中…' : '测试检索' }}</button>
           <span v-if="kbTestResult" class="kb-test-result">{{ kbTestResult }}</span>

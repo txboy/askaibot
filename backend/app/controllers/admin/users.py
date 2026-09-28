@@ -75,6 +75,9 @@ def delete_user(
     user = db.get(models.User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
+    db.query(models.UserGroupMember).filter(
+        models.UserGroupMember.user_id == user.id
+    ).delete(synchronize_session=False)
     conv_ids = [
         c.id
         for c in db.query(models.Conversation)

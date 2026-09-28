@@ -10,6 +10,7 @@ from .admin import Admin
 from .mcp_server import McpServer
 from .api_endpoint import ApiEndpoint
 from .skill import Skill, SkillAccess
+from .user_group import UserGroup, UserGroupMember, GroupGrant
 
 __all__ = [
     "Base",
@@ -25,4 +26,7 @@ __all__ = [
     "ApiEndpoint",
     "Skill",
     "SkillAccess",
+    "UserGroup",
+    "UserGroupMember",
+    "GroupGrant",
 ]

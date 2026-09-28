@@ -4,6 +4,7 @@ import { api } from '../../api'
 import { store } from '../../store'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import { useConfirm } from '../../composables/useConfirm'
+import UserScopeControl from '../../components/admin/UserScopeControl.vue'
 
 const endpoints = ref([])
 const errorMsg = ref('')
@@ -27,11 +28,11 @@ async function loadEndpoints() {
 }
 
 function openCreate() {
-  editing.value = { name: '', base_url: '', api_key: '', models: '', enabled: 1, is_default: 0 }
+  editing.value = { name: '', base_url: '', api_key: '', models: '', enabled: 1, is_default: 0, scope: 'global', group_ids: [] }
 }
 
 function openEdit(e) {
-  editing.value = { id: e.id, name: e.name, base_url: e.base_url, api_key: '', models: e.models, enabled: e.enabled, is_default: e.is_default }
+  editing.value = { id: e.id, name: e.name, base_url: e.base_url, api_key: '', models: e.models, enabled: e.enabled, is_default: e.is_default, scope: e.scope || 'global', group_ids: (e.group_ids || []).slice() }
 }
 
 async function save() {
@@ -41,7 +42,7 @@ async function save() {
   errorMsg.value = ''
   try {
     if (f.id) {
-      const body = { name: f.name, base_url: f.base_url, models: f.models, enabled: f.enabled, is_default: f.is_default }
+      const body = { name: f.name, base_url: f.base_url, models: f.models, enabled: f.enabled, is_default: f.is_default, scope: f.scope, group_ids: f.scope === 'group' ? f.group_ids : [] }
       if (f.api_key) body.api_key = f.api_key
       await api.adminUpdateEndpoint(f.id, body)
     } else {
@@ -52,6 +53,7 @@ async function save() {
         models: f.models,
         enabled: f.enabled,
         is_default: f.is_default,
+        scope: f.scope,
       })
     }
     editing.value = null
@@ -116,6 +118,7 @@ onMounted(loadEndpoints)
         <label>模型列表（逗号分隔）<textarea v-model="editing.models" class="input" rows="2" placeholder="gpt-4o, gpt-4o-mini"></textarea></label>
         <label class="check"><input type="checkbox" v-model="editing.enabled" :true-value="1" :false-value="0" /> 启用</label>
         <label class="check"><input type="checkbox" v-model="editing.is_default" :true-value="1" :false-value="0" /> 设为默认接口</label>
+        <UserScopeControl v-model:scope="editing.scope" v-model:groups="editing.group_ids" />
         <div class="foot">
           <button class="btn btn-outline" @click="editing = null">取消</button>
           <button class="btn" @click="save">保存</button>

@@ -5,6 +5,7 @@ import { store } from '../store'
 import Logo from '../components/Logo.vue'
 import AdminDashboard from './admin/AdminDashboard.vue'
 import AdminUsers from './admin/AdminUsers.vue'
+import AdminGroups from './admin/AdminGroups.vue'
 import AdminEndpoints from './admin/AdminEndpoints.vue'
 import AdminSms from './admin/AdminSms.vue'
 import AdminSearch from './admin/AdminSearch.vue'
@@ -29,6 +30,7 @@ const isAdmin = () => !!store.adminToken
 const navItems = [
   { key: 'dashboard', label: '首页' },
   { key: 'users', label: '用户列表' },
+  { key: 'groups', label: '用户组' },
   { key: 'endpoints', label: '接口设置' },
   { key: 'sms', label: '短信接口' },
   { key: 'search', label: '联网搜索' },
@@ -45,6 +47,7 @@ const navItems = [
 const sectionMap = {
   dashboard: AdminDashboard,
   users: AdminUsers,
+  groups: AdminGroups,
   endpoints: AdminEndpoints,
   sms: AdminSms,
   search: AdminSearch,

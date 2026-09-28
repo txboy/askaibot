@@ -17,6 +17,7 @@ from app.common import get_setting, mask_key
 from app.config import config
 from app.database import get_db
 from app.security import hash_password, verify_password
+from app.services import groups as groups_core
 
 router = APIRouter()
 __all__ = [
@@ -52,7 +53,7 @@ def _mask_headers(headers) -> dict:
     return out
 
 
-def _mcp_out(server: models.McpServer) -> schemas.McpServerOut:
+def _mcp_out(server: models.McpServer, db: Session) -> schemas.McpServerOut:
     tools = [
         schemas.McpToolOut(
             name=t["name"],
@@ -80,6 +81,8 @@ def _mcp_out(server: models.McpServer) -> schemas.McpServerOut:
         env_set=bool(server.env and server.env != "{}"),
         mode=server.mode,
         enabled=server.enabled,
+        scope=server.scope or "global",
+        group_ids=groups_core.group_ids_for_resource(db, "mcp", server.id),
         tools=tools,
     )
 
@@ -89,7 +92,7 @@ def list_mcp_servers(
     admin: models.Admin = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    return [_mcp_out(s) for s in db.query(models.McpServer).all()]
+    return [_mcp_out(s, db) for s in db.query(models.McpServer).all()]
 
 
 @router.post("/mcp", response_model=schemas.McpServerOut)
@@ -109,11 +112,12 @@ def create_mcp_server(
         env=payload.env or "{}",
         mode=payload.mode or "llm",
         enabled=payload.enabled or 1,
+        scope=payload.scope or "global",
     )
     db.add(server)
     db.commit()
     db.refresh(server)
-    return _mcp_out(server)
+    return _mcp_out(server, db)
 
 
 @router.put("/mcp/{server_id}", response_model=schemas.McpServerOut)
@@ -136,6 +140,7 @@ def update_mcp_server(
         "args",
         "env",
         "mode",
+        "scope",
     ):
         val = getattr(payload, field)
         if val is not None:
@@ -144,8 +149,12 @@ def update_mcp_server(
         server.enabled = payload.enabled
     db.commit()
     db.refresh(server)
+    if payload.group_ids is not None:
+        groups_core.set_resource_grants(db, "mcp", server.id, payload.group_ids)
+        db.commit()
+        db.refresh(server)
     mcp_core.clear_cache(server.id)
-    return _mcp_out(server)
+    return _mcp_out(server, db)
 
 
 @router.delete("/mcp/{server_id}")
@@ -157,6 +166,7 @@ def delete_mcp_server(
     server = db.get(models.McpServer, server_id)
     if not server:
         raise HTTPException(status_code=404, detail="MCP 服务不存在")
+    groups_core.set_resource_grants(db, "mcp", server.id, [])
     db.delete(server)
     db.commit()
     mcp_core.clear_cache(server.id)

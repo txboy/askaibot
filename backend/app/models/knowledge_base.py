@@ -20,4 +20,5 @@ class KnowledgeBase(Base):
     mode: Mapped[str] = mapped_column(String, default="frontend")  # frontend / llm
     description: Mapped[str] = mapped_column(String, default="")
     enabled: Mapped[int] = mapped_column(Integer, default=1)
+    scope: Mapped[str] = mapped_column(String, default="global")  # global / group
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

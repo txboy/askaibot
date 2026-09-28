@@ -174,6 +174,10 @@ export const api = {
   adminTestSkill: (id, tool, args = {}) => adminRequest(`/admin/skills/${id}/test`, { method: 'POST', body: { tool, args } }),
   adminUsers: () => adminRequest('/admin/users'),
   adminDeleteUser: (id) => adminRequest(`/admin/users/${id}`, { method: 'DELETE' }),
+  adminGroups: () => adminRequest('/admin/groups'),
+  adminCreateGroup: (data) => adminRequest('/admin/groups', { method: 'POST', body: data }),
+  adminUpdateGroup: (id, data) => adminRequest(`/admin/groups/${id}`, { method: 'PUT', body: data }),
+  adminDeleteGroup: (id) => adminRequest(`/admin/groups/${id}`, { method: 'DELETE' }),
   adminChangePassword: (data) => adminRequest('/admin/password', { method: 'PUT', body: data }),
   adminUploadLogo: (file) => {
     const form = new FormData()

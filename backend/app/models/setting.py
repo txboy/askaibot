@@ -52,3 +52,4 @@ class Setting(Base):
     search_api_key: Mapped[str] = mapped_column(String, default="")
     search_base_url: Mapped[str] = mapped_column(String, default="")
     search_auto: Mapped[int] = mapped_column(Integer, default=0)
+    search_scope: Mapped[str] = mapped_column(String, default="global")  # global / group
