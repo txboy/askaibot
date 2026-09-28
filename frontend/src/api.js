@@ -125,6 +125,7 @@ export const api = {
   adminCreateKnowledgeBase: (data) => adminRequest('/admin/knowledge-bases', { method: 'POST', body: data }),
   adminUpdateKnowledgeBase: (id, data) => adminRequest(`/admin/knowledge-bases/${id}`, { method: 'PUT', body: data }),
   adminDeleteKnowledgeBase: (id) => adminRequest(`/admin/knowledge-bases/${id}`, { method: 'DELETE' }),
+  adminTestKnowledgeBase: (data) => adminRequest('/admin/knowledge-bases/test', { method: 'POST', body: data }),
   adminGetWecomBots: () => adminRequest('/admin/wecom-bots'),
   adminCreateWecomBot: (data) => adminRequest('/admin/wecom-bots', { method: 'POST', body: data }),
   adminUpdateWecomBot: (id, data) => adminRequest(`/admin/wecom-bots/${id}`, { method: 'PUT', body: data }),

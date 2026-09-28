@@ -147,7 +147,8 @@ function openEndpointPicker() {
 
 const currentKnowledgeBaseText = computed(() => {
   const kb = knowledgeBases.value.find((k) => k.id === selectedKnowledgeBaseId.value)
-  return kb?.name || ''
+  if (!kb) return ''
+  return kb.name + (kb.provider === 'ragflow' ? '（RAGFlow）' : kb.provider === 'dify' ? '（Dify）' : '')
 })
 
 function selectKnowledgeBase(kb) {
@@ -618,7 +619,10 @@ function logout() {
             :class="{ active: selectedKnowledgeBaseId === kb.id }"
             @click="selectKnowledgeBase(kb)"
           >
-            <span>{{ kb.name }}</span>
+            <span class="picker-kb-title">
+              <span>{{ kb.name }}</span>
+              <span class="kb-type">{{ kb.provider === 'ragflow' ? 'RAGFlow' : kb.provider === 'dify' ? 'Dify' : '' }}</span>
+            </span>
             <span v-if="kb.description" class="picker-kb-desc">{{ kb.description }}</span>
           </button>
         </div>
@@ -1142,6 +1146,26 @@ function logout() {
 .picker-kb-desc {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.picker-kb-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.kb-type {
+  font-size: 11px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 5px;
+}
+
+.picker-kb.active .kb-type {
+  color: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .picker-kb.active .picker-kb-desc {

@@ -14,6 +14,7 @@ from .. import models, schemas
 from ..auth import create_admin_token, get_current_admin
 from ..common import get_setting, mask_key
 from ..config import config
+from ..kb import retrieve_kb
 from ..database import get_db
 from ..security import hash_password, verify_password
 
@@ -288,8 +289,12 @@ def _kb_out(kb: models.KnowledgeBase) -> schemas.KnowledgeBaseOut:
     return schemas.KnowledgeBaseOut(
         id=kb.id,
         name=kb.name,
+        provider=kb.provider,
         base_url=kb.base_url,
         api_key_masked=mask_key(kb.api_key),
+        dataset_ids=kb.dataset_ids,
+        top_k=kb.top_k,
+        mode=kb.mode,
         description=kb.description,
         enabled=kb.enabled,
     )
@@ -311,8 +316,12 @@ def create_knowledge_base(
 ):
     kb = models.KnowledgeBase(
         name=payload.name,
+        provider=payload.provider or "dify",
         base_url=payload.base_url,
         api_key=payload.api_key or "",
+        dataset_ids=payload.dataset_ids or "",
+        top_k=payload.top_k or 5,
+        mode=payload.mode or "frontend",
         description=payload.description or "",
         enabled=payload.enabled or 1,
     )
@@ -334,10 +343,18 @@ def update_knowledge_base(
         raise HTTPException(status_code=404, detail="知识库不存在")
     if payload.name is not None:
         kb.name = payload.name
+    if payload.provider is not None:
+        kb.provider = payload.provider
     if payload.base_url is not None:
         kb.base_url = payload.base_url
     if payload.api_key:
         kb.api_key = payload.api_key
+    if payload.dataset_ids is not None:
+        kb.dataset_ids = payload.dataset_ids
+    if payload.top_k is not None:
+        kb.top_k = payload.top_k
+    if payload.mode is not None:
+        kb.mode = payload.mode
     if payload.description is not None:
         kb.description = payload.description
     if payload.enabled is not None:
@@ -359,6 +376,23 @@ def delete_knowledge_base(
     db.delete(kb)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/knowledge-bases/test", response_model=dict)
+async def test_knowledge_base(
+    payload: schemas.KnowledgeBaseTestRequest,
+    admin: models.Admin = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    results = await retrieve_kb(
+        payload.provider,
+        payload.base_url,
+        payload.api_key,
+        payload.dataset_ids,
+        payload.query,
+        top_k=payload.top_k,
+    )
+    return {"ok": True, "count": len(results), "results": results}
 
 
 def _bot_callback_url(db: Session, bot_id: int) -> str:
@@ -429,7 +463,16 @@ def update_wecom_bot(
     bot = db.get(models.WecomBot, bot_id)
     if not bot:
         raise HTTPException(status_code=404, detail="机器人不存在")
-    for field in ("name", "corp_id", "agent_id", "token", "aes_key", "kb_ids", "mcp_ids", "model"):
+    for field in (
+        "name",
+        "corp_id",
+        "agent_id",
+        "token",
+        "aes_key",
+        "kb_ids",
+        "mcp_ids",
+        "model",
+    ):
         val = getattr(payload, field)
         if val is not None:
             setattr(bot, field, val)
@@ -941,16 +984,20 @@ def _user_out(db: Session, u: models.User) -> schemas.AdminUserOut:
     )
     joined = (
         db.query(func.coalesce(func.sum(models.Message.tokens), 0))
-        .join(models.Conversation, models.Message.conversation_id == models.Conversation.id)
+        .join(
+            models.Conversation,
+            models.Message.conversation_id == models.Conversation.id,
+        )
         .filter(models.Conversation.user_id == u.id)
     )
     total = joined.scalar()
-    today = (
-        joined.filter(models.Message.created_at >= today_start).scalar()
-    )
+    today = joined.filter(models.Message.created_at >= today_start).scalar()
     last_active = (
         db.query(func.max(models.Message.created_at))
-        .join(models.Conversation, models.Message.conversation_id == models.Conversation.id)
+        .join(
+            models.Conversation,
+            models.Message.conversation_id == models.Conversation.id,
+        )
         .filter(models.Conversation.user_id == u.id)
         .scalar()
     )
@@ -971,11 +1018,7 @@ def list_users(
     admin: models.Admin = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    users = (
-        db.query(models.User)
-        .order_by(models.User.created_at.desc())
-        .all()
-    )
+    users = db.query(models.User).order_by(models.User.created_at.desc()).all()
     return [_user_out(db, u) for u in users]
 
 
@@ -995,9 +1038,7 @@ def delete_user(
         .all()
     ]
     attachments = (
-        db.query(models.Attachment)
-        .filter(models.Attachment.user_id == user.id)
-        .all()
+        db.query(models.Attachment).filter(models.Attachment.user_id == user.id).all()
     )
     for att in attachments:
         old = os.path.join(config.upload_dir, att.stored_name)
@@ -1010,12 +1051,12 @@ def delete_user(
         db.query(models.Message).filter(
             models.Message.conversation_id.in_(conv_ids)
         ).delete(synchronize_session=False)
-    db.query(models.Attachment).filter(
-        models.Attachment.user_id == user.id
-    ).delete(synchronize_session=False)
-    db.query(models.Conversation).filter(
-        models.Conversation.user_id == user.id
-    ).delete(synchronize_session=False)
+    db.query(models.Attachment).filter(models.Attachment.user_id == user.id).delete(
+        synchronize_session=False
+    )
+    db.query(models.Conversation).filter(models.Conversation.user_id == user.id).delete(
+        synchronize_session=False
+    )
     db.delete(user)
     db.commit()
     return {"ok": True}
@@ -1207,4 +1248,3 @@ async def test_skill(
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"执行失败：{exc}")
     return {"output": output}
-

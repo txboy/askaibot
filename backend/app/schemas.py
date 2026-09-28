@@ -238,16 +238,24 @@ class SearchUpdate(BaseModel):
 
 class KnowledgeBaseCreate(BaseModel):
     name: str
+    provider: Optional[str] = "dify"
     base_url: str
     api_key: Optional[str] = ""
+    dataset_ids: Optional[str] = ""
+    top_k: Optional[int] = 5
+    mode: Optional[str] = "frontend"
     description: Optional[str] = ""
     enabled: Optional[int] = 1
 
 
 class KnowledgeBaseUpdate(BaseModel):
     name: Optional[str] = None
+    provider: Optional[str] = None
     base_url: Optional[str] = None
     api_key: Optional[str] = None
+    dataset_ids: Optional[str] = None
+    top_k: Optional[int] = None
+    mode: Optional[str] = None
     description: Optional[str] = None
     enabled: Optional[int] = None
 
@@ -255,8 +263,12 @@ class KnowledgeBaseUpdate(BaseModel):
 class KnowledgeBaseOut(BaseModel):
     id: int
     name: str
+    provider: str
     base_url: str
     api_key_masked: str
+    dataset_ids: str
+    top_k: int
+    mode: str
     description: str
     enabled: int
 
@@ -267,7 +279,17 @@ class KnowledgeBaseOut(BaseModel):
 class KnowledgeBasePublic(BaseModel):
     id: int
     name: str
+    provider: str
     description: str
+
+
+class KnowledgeBaseTestRequest(BaseModel):
+    provider: Optional[str] = "dify"
+    base_url: str
+    api_key: Optional[str] = ""
+    dataset_ids: Optional[str] = ""
+    top_k: Optional[int] = 5
+    query: str
 
 
 class WecomBotCreate(BaseModel):

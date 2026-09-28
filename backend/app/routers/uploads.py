@@ -131,7 +131,7 @@ def get_site(db: Session = Depends(get_db)):
             if setting.assistant_avatar
             else ""
         ),
-        "favicon_url": "/api/favicon" if setting.favicon_path else "/favicon.svg",
+        "favicon_url": "/api/favicon" if setting.favicon_path else "/favicon.ico",
     }
 
 

@@ -10,7 +10,7 @@ from . import mcp as mcp_core
 from . import skills as skill_core
 from . import models
 from .common import build_content_parts, get_setting, parse_models
-from .kb import format_kb_context, retrieve_kb
+from .kb import build_openai_tools, format_kb_context, retrieve_kb
 from .search import format_results, search_web
 
 _token_cache: dict[str, tuple[str, float]] = {}
@@ -96,13 +96,6 @@ def _last_user_text(messages: list[models.Message]) -> str:
 
 async def build_context(db: Session, bot: models.WecomBot, query: str) -> str:
     parts: list[str] = []
-    for kb_id in parse_kb_ids(bot.kb_ids):
-        kb = db.get(models.KnowledgeBase, kb_id)
-        if kb and kb.enabled:
-            results = await retrieve_kb(kb.base_url, kb.api_key, query)
-            ctx = format_kb_context(results)
-            if ctx:
-                parts.append(ctx)
     if bot.web_search:
         setting = get_setting(db)
         provider = setting.search_provider
@@ -120,6 +113,20 @@ async def build_context(db: Session, bot: models.WecomBot, query: str) -> str:
             if txt:
                 parts.append("请参考以下联网搜索结果：\n" + txt)
     return "\n\n".join(parts)
+
+
+def _bot_kbs(db: Session, bot: models.WecomBot) -> list[models.KnowledgeBase]:
+    ids = parse_kb_ids(bot.kb_ids)
+    if not ids:
+        return []
+    return (
+        db.query(models.KnowledgeBase)
+        .filter(
+            models.KnowledgeBase.id.in_(ids),
+            models.KnowledgeBase.enabled == 1,
+        )
+        .all()
+    )
 
 
 async def generate_reply(
@@ -171,7 +178,11 @@ async def generate_reply(
     skills = skill_core.resolve_skills_by_ids(db, skill_core.parse_ids(bot.skill_ids))
     skill_tools, skill_mapping = skill_core.build_openai_tools(skills)
 
-    tools = ((mcp_tools or []) + (skill_tools or [])) or None
+    # 机器人绑定的知识库，以工具形式暴露给 LLM（默认使用，由大模型自主选择）
+    bot_kbs = _bot_kbs(db, bot)
+    kb_tools, kb_mapping = build_openai_tools(bot_kbs)
+
+    tools = ((mcp_tools or []) + (skill_tools or []) + (kb_tools or [])) or None
 
     for s in skills:
         if s.content:
@@ -212,9 +223,7 @@ async def generate_reply(
                 if name in mcp_mapping:
                     server, tool_name = mcp_mapping[name]
                     try:
-                        tool_content = await mcp_core.call_tool(
-                            server, tool_name, args
-                        )
+                        tool_content = await mcp_core.call_tool(server, tool_name, args)
                     except Exception as exc:
                         tool_content = f"工具调用失败：{exc}"
                 elif name in skill_mapping:
@@ -223,12 +232,30 @@ async def generate_reply(
                         tool_content = await skill_core.call_tool(skill, tool, args)
                     except Exception as exc:
                         tool_content = f"技能调用失败：{exc}"
+                elif name in kb_mapping:
+                    kb = kb_mapping[name]
+                    try:
+                        results = await retrieve_kb(
+                            kb.provider,
+                            kb.base_url,
+                            kb.api_key,
+                            kb.dataset_ids,
+                            args.get("query", ""),
+                            top_k=kb.top_k,
+                        )
+                        tool_content = (
+                            format_kb_context(results) or "（未命中知识库内容）"
+                        )
+                    except Exception as exc:
+                        tool_content = f"知识库检索失败：{exc}"
                 else:
                     tool_content = "该工具不可用，请重试。"
                 tool_messages.append(
                     {"role": "tool", "tool_call_id": cid, "content": tool_content}
                 )
-            messages = messages + [
-                {"role": "assistant", "content": None, "tool_calls": tool_calls}
-            ] + tool_messages
+            messages = (
+                messages
+                + [{"role": "assistant", "content": None, "tool_calls": tool_calls}]
+                + tool_messages
+            )
     return content

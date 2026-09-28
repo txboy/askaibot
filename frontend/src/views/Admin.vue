@@ -25,8 +25,6 @@ const navItems = [
   { key: 'skill', label: '技能包' },
   { key: 'knowledge', label: '知识库' },
   { key: 'wecom', label: '企微设置' },
-  { key: 'wecom-bot', label: '企微机器人' },
-  { key: 'logo', label: 'Logo设置' },
   { key: 'system', label: '系统设置' },
   { key: 'password', label: '修改密码' },
 ]
@@ -132,6 +130,8 @@ const searchProviders = [
 const kbs = ref([])
 const kbMsg = ref('')
 const savingKb = ref(false)
+const testingKb = ref(false)
+const kbTestResult = ref('')
 const editingKb = ref(null)
 
 const bots = ref([])
@@ -208,8 +208,6 @@ async function selectSection(key) {
     else if (key === 'skill') await loadSkills()
     else if (key === 'knowledge') await loadKbs()
     else if (key === 'wecom') await loadWecom()
-    else if (key === 'wecom-bot') await loadBots()
-    else if (key === 'logo') await loadLogo()
     else if (key === 'system') await loadSystem()
   } catch (e) {
     if (String(e.message).includes('401') || String(e.message).includes('管理员')) {
@@ -382,7 +380,7 @@ async function resetFavicon() {
     faviconSet.value = false
     faviconPreview.value = ''
     const link = document.querySelector("link[rel~='icon']")
-    if (link) link.href = '/favicon.svg'
+    if (link) link.href = '/favicon.ico'
     faviconMsg.value = '已恢复默认 favicon'
   } catch (e) {
     faviconMsg.value = e.message
@@ -516,18 +514,24 @@ async function loadKbs() {
 }
 
 function openKbCreate() {
-  editingKb.value = { name: '', base_url: '', api_key: '', description: '', enabled: 1 }
+  editingKb.value = { name: '', provider: 'dify', base_url: '', api_key: '', dataset_ids: '', top_k: 5, mode: 'frontend', description: '', enabled: 1 }
+  kbTestResult.value = ''
 }
 
 function openKbEdit(kb) {
   editingKb.value = {
     id: kb.id,
     name: kb.name,
+    provider: kb.provider || 'dify',
     base_url: kb.base_url,
     api_key: '',
+    dataset_ids: kb.dataset_ids || '',
+    top_k: kb.top_k || 5,
+    mode: kb.mode || 'frontend',
     description: kb.description,
     enabled: kb.enabled,
   }
+  kbTestResult.value = ''
 }
 
 async function saveKb() {
@@ -537,7 +541,7 @@ async function saveKb() {
   savingKb.value = true
   kbMsg.value = ''
   try {
-    const body = { name: f.name, base_url: f.base_url, description: f.description || '', enabled: f.enabled }
+    const body = { name: f.name, provider: f.provider, base_url: f.base_url, dataset_ids: f.dataset_ids || '', top_k: Number(f.top_k) || 5, mode: f.mode, description: f.description || '', enabled: f.enabled }
     if (f.api_key) body.api_key = f.api_key
     if (f.id) {
       await api.adminUpdateKnowledgeBase(f.id, body)
@@ -550,6 +554,34 @@ async function saveKb() {
     kbMsg.value = e.message
   } finally {
     savingKb.value = false
+  }
+}
+
+async function testKb() {
+  if (!editingKb.value) return
+  const f = editingKb.value
+  if (!f.base_url || !f.dataset_ids) return (kbTestResult.value = '请填写地址和数据集ID')
+  testingKb.value = true
+  kbTestResult.value = ''
+  try {
+    const res = await api.adminTestKnowledgeBase({
+      provider: f.provider,
+      base_url: f.base_url,
+      api_key: f.api_key || '',
+      dataset_ids: f.dataset_ids || '',
+      top_k: Number(f.top_k) || 5,
+      query: '测试',
+    })
+    const hits = res.results || []
+    if (hits.length) {
+      kbTestResult.value = `检索成功，命中 ${hits.length} 条：\n` + hits.map((h) => `- ${h.title || '片段'}`).join('\n')
+    } else {
+      kbTestResult.value = '检索成功，但未命中结果。'
+    }
+  } catch (e) {
+    kbTestResult.value = '检索失败：' + (e.message || e)
+  } finally {
+    testingKb.value = false
   }
 }
 
@@ -1404,6 +1436,9 @@ onMounted(() => {
             <thead>
               <tr>
                 <th>名称</th>
+                <th>类型</th>
+                <th>模式</th>
+                <th>数据集ID</th>
                 <th>地址</th>
                 <th>说明</th>
                 <th>启用</th>
@@ -1413,6 +1448,9 @@ onMounted(() => {
             <tbody>
               <tr v-for="kb in kbs" :key="kb.id">
                 <td>{{ kb.name }}</td>
+                <td>{{ kb.provider === 'ragflow' ? 'RAGFlow' : 'Dify' }}</td>
+                <td>{{ kb.mode === 'llm' ? 'LLM自选' : '前台选择' }}</td>
+                <td class="mono">{{ kb.dataset_ids || '—' }}</td>
                 <td class="mono">{{ kb.base_url }}</td>
                 <td>{{ kb.description || '—' }}</td>
                 <td>{{ kb.enabled ? '✓' : '✕' }}</td>
@@ -1422,17 +1460,19 @@ onMounted(() => {
                 </td>
               </tr>
               <tr v-if="!kbs.length">
-                <td colspan="5" class="empty">暂无知识库，点击「添加知识库」创建</td>
+                <td colspan="8" class="empty">暂无知识库，点击「添加知识库」创建</td>
               </tr>
             </tbody>
           </table>
           <p class="hint" style="margin-top: 10px">
-            知识库为外部检索接口：聊天时按固定契约向「地址」POST <code>{ query, top_k }</code>（带 Bearer 密钥），并解析 <code>{ results: [{ title, content, source }] }</code>。用户在前台选择知识库后，系统会检索并把相关内容注入给大模型回答。
+            知识库仅对接 <strong>Dify</strong> 与 <strong>RAGFlow</strong> 的检索 API。模式：<strong>前台选择</strong>（在聊天界面由用户选用并注入上下文）/ <strong>LLM自选</strong>（作为工具由大模型自主检索，前端无感，企微机器人仅用此模式）。数据集ID支持逗号分隔（Dify 取第一个）。
           </p>
         </section>
 
         <section v-else-if="active === 'wecom'" class="content">
           <h2>企微设置</h2>
+
+          <h3 class="section-title">基础配置</h3>
           <div class="card">
             <div class="wecom-grid">
               <label>CorpID<input v-model="wecomCorpId" class="input" placeholder="企业微信 CorpID" /></label>
@@ -1445,11 +1485,10 @@ onMounted(() => {
               <button class="btn" :disabled="savingWecom" @click="saveWecom">{{ savingWecom ? '保存中…' : '保存企业微信配置' }}</button>
             </div>
           </div>
-        </section>
 
-        <section v-else-if="active === 'wecom-bot'" class="content">
+          <h3 class="section-title">机器人</h3>
           <div class="head">
-            <h2>企微机器人</h2>
+            <span></span>
             <button class="btn" @click="openBotCreate">＋ 添加机器人</button>
           </div>
           <p v-if="botMsg" class="msg">{{ botMsg }}</p>
@@ -1486,30 +1525,6 @@ onMounted(() => {
           <p class="hint" style="margin-top: 10px">
             每个机器人对应企微的一个自建应用。请在企微后台为该应用开通「API 接收消息」，回调地址填该机器人的回调 URL（编辑弹窗内显示），并填写 Token 与 EncodingAESKey。创建/编辑后可在弹窗底部看到回调地址。
           </p>
-        </section>
-
-        <section v-else-if="active === 'logo'" class="content">
-          <h2>Logo设置</h2>
-          <div class="card">
-            <div class="logo-row">
-              <div class="logo-preview">
-                <img v-if="logoPreview" :src="logoPreview" alt="Logo 预览" />
-                <span v-else class="logo-empty">未设置自定义 Logo（使用默认）</span>
-              </div>
-              <div class="logo-ops">
-                <label class="btn btn-outline link file-btn">
-                  {{ logoFile ? logoFile.name : '选择图片' }}
-                  <input type="file" accept="image/*" @change="onLogoFile" />
-                </label>
-                <button class="btn" :disabled="savingLogo || !logoFile" @click="uploadLogo">
-                  {{ savingLogo ? '上传中…' : '上传 Logo' }}
-                </button>
-                <button v-if="logoSet" class="btn-ghost del" @click="resetLogo">恢复默认</button>
-              </div>
-            </div>
-            <p v-if="logoMsg" class="hint">{{ logoMsg }}</p>
-            <p class="hint">上传后登录页与聊天侧边栏将显示该 Logo；图片建议使用透明背景 PNG 或 SVG。</p>
-          </div>
         </section>
 
         <section v-else-if="active === 'system'" class="content">
@@ -1591,6 +1606,28 @@ onMounted(() => {
             <p class="hint">上传后浏览器标签页图标将更新；建议使用 32x32 或 64x64 的 PNG/ICO。</p>
           </div>
 
+          <h3 class="section-title">站点 Logo</h3>
+          <div class="card">
+            <div class="logo-row">
+              <div class="logo-preview">
+                <img v-if="logoPreview" :src="logoPreview" alt="Logo 预览" />
+                <span v-else class="logo-empty">未设置自定义 Logo（使用默认）</span>
+              </div>
+              <div class="logo-ops">
+                <label class="btn btn-outline link file-btn">
+                  {{ logoFile ? logoFile.name : '选择图片' }}
+                  <input type="file" accept="image/*" @change="onLogoFile" />
+                </label>
+                <button class="btn" :disabled="savingLogo || !logoFile" @click="uploadLogo">
+                  {{ savingLogo ? '上传中…' : '上传 Logo' }}
+                </button>
+                <button v-if="logoSet" class="btn-ghost del" @click="resetLogo">恢复默认</button>
+              </div>
+            </div>
+            <p v-if="logoMsg" class="hint">{{ logoMsg }}</p>
+            <p class="hint">上传后登录页与聊天侧边栏将显示该 Logo；图片建议使用透明背景 PNG 或 SVG。</p>
+          </div>
+
           <h3 class="section-title">助手默认头像</h3>
           <div class="card">
             <div class="logo-row">
@@ -1667,10 +1704,30 @@ onMounted(() => {
       <div class="modal">
         <h3>{{ editingKb.id ? '编辑知识库' : '添加知识库' }}</h3>
         <label>名称<input v-model="editingKb.name" class="input" placeholder="如 内部文档" /></label>
-        <label>检索接口地址<input v-model="editingKb.base_url" class="input" placeholder="如 https://kb.example/retrieve" /></label>
-        <label>API Key<input v-model="editingKb.api_key" type="password" class="input" :placeholder="editingKb.id ? '留空则不修改' : '可选，Bearer 密钥'" /></label>
+        <div class="form-2">
+          <label>类型
+            <select v-model="editingKb.provider" class="input">
+              <option value="dify">Dify</option>
+              <option value="ragflow">RAGFlow</option>
+            </select>
+          </label>
+          <label>使用模式
+            <select v-model="editingKb.mode" class="input">
+              <option value="frontend">前台选择</option>
+              <option value="llm">LLM自选（默认）</option>
+            </select>
+          </label>
+        </div>
+        <label>数据集ID<input v-model="editingKb.dataset_ids" class="input" placeholder="如 482b9a…，多个用英文逗号分隔" /></label>
+        <label>API 地址<input v-model="editingKb.base_url" class="input" :placeholder="editingKb.provider === 'ragflow' ? '如 http://ragflow-host:9380' : '如 https://api.dify.ai/v1'" /></label>
+        <label>API Key<input v-model="editingKb.api_key" type="password" class="input" :placeholder="editingKb.id ? '留空则不修改' : 'Bearer 密钥（Dify 数据集 Key / RAGFlow API Key）'" /></label>
+        <label>返回条数（top_k）<input v-model="editingKb.top_k" type="number" class="input" min="1" /></label>
         <label>说明<textarea v-model="editingKb.description" class="input" rows="2" placeholder="知识库简介（可选）"></textarea></label>
         <label class="check"><input type="checkbox" v-model="editingKb.enabled" :true-value="1" :false-value="0" /> 启用</label>
+        <div class="kb-test">
+          <button class="btn btn-outline" :disabled="testingKb" @click="testKb">{{ testingKb ? '测试中…' : '测试检索' }}</button>
+          <span v-if="kbTestResult" class="kb-test-result">{{ kbTestResult }}</span>
+        </div>
         <div class="foot">
           <button class="btn btn-outline" @click="editingKb = null">取消</button>
           <button class="btn" :disabled="savingKb" @click="saveKb">{{ savingKb ? '保存中…' : '保存' }}</button>
@@ -2407,6 +2464,21 @@ onMounted(() => {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 8px;
+}
+
+.kb-test {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.kb-test-result {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .full {

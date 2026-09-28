@@ -118,13 +118,30 @@ def _ensure_columns() -> None:
         if "mcp_ids" not in ccols:
             with engine.begin() as conn:
                 conn.execute(
-                    text("ALTER TABLE conversations ADD COLUMN mcp_ids VARCHAR DEFAULT ''")
+                    text(
+                        "ALTER TABLE conversations ADD COLUMN mcp_ids VARCHAR DEFAULT ''"
+                    )
                 )
         if "skill_ids" not in ccols:
             with engine.begin() as conn:
                 conn.execute(
-                    text("ALTER TABLE conversations ADD COLUMN skill_ids VARCHAR DEFAULT ''")
+                    text(
+                        "ALTER TABLE conversations ADD COLUMN skill_ids VARCHAR DEFAULT ''"
+                    )
                 )
+    if "knowledge_bases" in insp.get_table_names():
+        kbcols = {c["name"] for c in insp.get_columns("knowledge_bases")}
+        for name, ddl in {
+            "provider": "VARCHAR DEFAULT 'dify'",
+            "dataset_ids": "VARCHAR DEFAULT ''",
+            "top_k": "INTEGER DEFAULT 5",
+            "mode": "VARCHAR DEFAULT 'frontend'",
+        }.items():
+            if name not in kbcols:
+                with engine.begin() as conn:
+                    conn.execute(
+                        text(f"ALTER TABLE knowledge_bases ADD COLUMN {name} {ddl}")
+                    )
     if "wecom_bots" in insp.get_table_names():
         bcols = {c["name"] for c in insp.get_columns("wecom_bots")}
         if "mcp_ids" not in bcols:
@@ -135,7 +152,9 @@ def _ensure_columns() -> None:
         if "skill_ids" not in bcols:
             with engine.begin() as conn:
                 conn.execute(
-                    text("ALTER TABLE wecom_bots ADD COLUMN skill_ids VARCHAR DEFAULT ''")
+                    text(
+                        "ALTER TABLE wecom_bots ADD COLUMN skill_ids VARCHAR DEFAULT ''"
+                    )
                 )
 
 

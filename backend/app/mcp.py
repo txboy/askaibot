@@ -10,7 +10,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-import httpx2
+import httpx
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
@@ -61,11 +61,12 @@ async def _connect(server: models.McpServer) -> AsyncIterator[ClientSession]:
     else:
         parsed = _parse_json(server.headers, {})
         headers = parsed if isinstance(parsed, dict) else {}
-        client = httpx2.AsyncClient(headers=headers, timeout=30)
+        client = httpx.AsyncClient(headers=headers, timeout=30)
         try:
-            async with streamable_http_client(
-                server.url, http_client=client
-            ) as (read, write):
+            async with streamable_http_client(server.url, http_client=client) as (
+                read,
+                write,
+            ):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     yield session

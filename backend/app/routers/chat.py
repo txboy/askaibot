@@ -12,7 +12,7 @@ from .. import models, schemas
 from ..auth import get_current_user
 from ..common import build_content_parts, get_setting, parse_models
 from ..database import get_db
-from ..kb import format_kb_context, retrieve_kb
+from ..kb import build_openai_tools, format_kb_context, retrieve_kb
 from ..search import format_results, search_web
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -98,13 +98,11 @@ def chat(
         else:
             openai_messages.append({"role": m.role, "content": m.content})
 
-    kb_url = ""
-    kb_api_key = ""
+    kb_cfg = None
     if payload.knowledge_base_id:
         kb = db.get(models.KnowledgeBase, payload.knowledge_base_id)
-        if kb and kb.enabled:
-            kb_url = kb.base_url
-            kb_api_key = kb.api_key
+        if kb and kb.enabled and kb.mode == "frontend":
+            kb_cfg = kb
 
     headers = {"Content-Type": "application/json"}
     if api_key:
@@ -146,8 +144,15 @@ def chat(
         usage_tokens = 0
         current_messages = openai_messages
         try:
-            if kb_url:
-                results = await retrieve_kb(kb_url, kb_api_key, payload.content)
+            if kb_cfg:
+                results = await retrieve_kb(
+                    kb_cfg.provider,
+                    kb_cfg.base_url,
+                    kb_cfg.api_key,
+                    kb_cfg.dataset_ids,
+                    payload.content,
+                    top_k=kb_cfg.top_k,
+                )
                 context = format_kb_context(results)
                 if context:
                     current_messages = [
@@ -173,19 +178,28 @@ def chat(
             else:
                 skills = []
             skill_system = [
-                {"role": "system", "content": s.content}
-                for s in skills
-                if s.content
+                {"role": "system", "content": s.content} for s in skills if s.content
             ]
             if skill_system:
                 current_messages = skill_system + current_messages
             skill_tools, skill_mapping = skill_core.build_openai_tools(skills)
+
+            llm_kbs = (
+                db.query(models.KnowledgeBase)
+                .filter(
+                    models.KnowledgeBase.enabled == 1,
+                    models.KnowledgeBase.mode == "llm",
+                )
+                .all()
+            )
+            kb_tools, kb_mapping = build_openai_tools(llm_kbs)
 
             base_tools: list[dict] = []
             if should_search:
                 base_tools.append(search_tool)
             base_tools.extend(mcp_tools)
             base_tools.extend(skill_tools)
+            base_tools.extend(kb_tools)
 
             for round_index in range(3):
                 body = {**request_body, "messages": current_messages}
@@ -292,9 +306,7 @@ def chat(
                         server, tool_name = mcp_mapping[name]
                         yield f"data: {json.dumps({'status': 'tool', 'server': server.name})}\n\n"
                         try:
-                            content = await mcp_core.call_tool(
-                                server, tool_name, args
-                            )
+                            content = await mcp_core.call_tool(server, tool_name, args)
                         except Exception as exc:
                             content = f"工具调用失败：{exc}"
                         tool_messages.append(
@@ -310,6 +322,26 @@ def chat(
                         tool_messages.append(
                             {"role": "tool", "tool_call_id": cid, "content": content}
                         )
+                    elif name in kb_mapping:
+                        kb = kb_mapping[name]
+                        yield f"data: {json.dumps({'status': 'tool', 'server': kb.name})}\n\n"
+                        try:
+                            results = await retrieve_kb(
+                                kb.provider,
+                                kb.base_url,
+                                kb.api_key,
+                                kb.dataset_ids,
+                                args.get("query", ""),
+                                top_k=kb.top_k,
+                            )
+                            content = (
+                                format_kb_context(results) or "（未命中知识库内容）"
+                            )
+                        except Exception as exc:
+                            content = f"知识库检索失败：{exc}"
+                        tool_messages.append(
+                            {"role": "tool", "tool_call_id": cid, "content": content}
+                        )
                     else:
                         tool_messages.append(
                             {
@@ -319,9 +351,17 @@ def chat(
                             }
                         )
 
-                current_messages = current_messages + [
-                    {"role": "assistant", "content": None, "tool_calls": tool_calls_payload}
-                ] + tool_messages
+                current_messages = (
+                    current_messages
+                    + [
+                        {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": tool_calls_payload,
+                        }
+                    ]
+                    + tool_messages
+                )
         except Exception as exc:
             yield f"data: {json.dumps({'error': str(exc)})}\n\n"
 

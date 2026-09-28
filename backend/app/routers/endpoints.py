@@ -16,12 +16,17 @@ def list_public_knowledge_bases(
 ):
     kbs = (
         db.query(models.KnowledgeBase)
-        .filter(models.KnowledgeBase.enabled == 1)
+        .filter(
+            models.KnowledgeBase.enabled == 1,
+            models.KnowledgeBase.mode == "frontend",
+        )
         .order_by(models.KnowledgeBase.id.asc())
         .all()
     )
     return [
-        schemas.KnowledgeBasePublic(id=kb.id, name=kb.name, description=kb.description)
+        schemas.KnowledgeBasePublic(
+            id=kb.id, name=kb.name, provider=kb.provider, description=kb.description
+        )
         for kb in kbs
     ]
 

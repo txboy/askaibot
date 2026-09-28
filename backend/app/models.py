@@ -94,8 +94,12 @@ class KnowledgeBase(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String)
+    provider: Mapped[str] = mapped_column(String, default="dify")  # dify / ragflow
     base_url: Mapped[str] = mapped_column(String)
     api_key: Mapped[str] = mapped_column(String, default="")
+    dataset_ids: Mapped[str] = mapped_column(String, default="")  # 逗号分隔
+    top_k: Mapped[int] = mapped_column(Integer, default=5)
+    mode: Mapped[str] = mapped_column(String, default="frontend")  # frontend / llm
     description: Mapped[str] = mapped_column(String, default="")
     enabled: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -193,8 +197,12 @@ class Skill(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String)
     description: Mapped[str] = mapped_column(String, default="")
-    dir_path: Mapped[str] = mapped_column(String, default="")  # upload_dir 内的技能包目录
-    content: Mapped[str] = mapped_column(Text, default="")  # SKILL.md 正文（注入系统提示词）
+    dir_path: Mapped[str] = mapped_column(
+        String, default=""
+    )  # upload_dir 内的技能包目录
+    content: Mapped[str] = mapped_column(
+        Text, default=""
+    )  # SKILL.md 正文（注入系统提示词）
     tools: Mapped[str] = mapped_column(Text, default="[]")  # JSON：工具声明列表
     scope: Mapped[str] = mapped_column(String, default="global")  # global / user
     enabled: Mapped[int] = mapped_column(Integer, default=1)
@@ -208,7 +216,5 @@ class SkillAccess(Base):
     __tablename__ = "skill_access"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    skill_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("skills.id"), index=True
-    )
+    skill_id: Mapped[int] = mapped_column(Integer, ForeignKey("skills.id"), index=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), index=True)

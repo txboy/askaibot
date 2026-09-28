@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import app.routers.wecom_bot as wecom_router
+import app.kb as kb_mod
 import app.wecom_bot as bot_core
 import app.wecom_crypto as wc
 from app import models
@@ -143,6 +144,94 @@ def test_generate_reply_uses_endpoint_and_returns_content(monkeypatch, db):
     assert any(
         m["role"] == "user" and m["content"] == "你好"
         for m in kwargs["json"]["messages"]
+    )
+
+
+def test_generate_reply_exposes_bound_kb_as_tool(db, monkeypatch):
+    ep = models.ApiEndpoint(
+        id=1,
+        name="ep",
+        base_url="https://api.example/v1",
+        api_key="k",
+        models="gpt-test",
+        enabled=1,
+    )
+    kb = models.KnowledgeBase(
+        id=1,
+        name="默认库",
+        provider="dify",
+        base_url="https://api.dify.ai/v1",
+        dataset_ids="ds-1",
+        mode="llm",
+        enabled=1,
+    )
+    bot = _bot(endpoint_id=1, model="gpt-test", kb_ids="1")
+    user = models.User(id=1, nickname="u")
+    conversation = models.Conversation(id=1, user_id=1, bot_id=1, title="c")
+    db.add_all([ep, kb, bot, user, conversation])
+    db.flush()
+    db.add(models.Message(conversation_id=1, role="user", content="查下产品文档"))
+    db.commit()
+
+    tool_name = f"kb__{kb_mod._slug('默认库')}__1__retrieve"
+
+    async def fake_retrieve(provider, base_url, api_key, dataset_ids, query, top_k=5):
+        return [{"title": "T", "content": "知识内容", "source": "S"}]
+
+    monkeypatch.setattr(bot_core, "retrieve_kb", fake_retrieve)
+
+    class SeqLLMClient(FakeHttp):
+        def __init__(self):
+            super().__init__(FakeResp({}))
+            self._i = 0
+
+        async def post(self, url, **kwargs):
+            self.posts.append((url, kwargs))
+            if self._i == 0:
+                self._i += 1
+                return FakeResp(
+                    {
+                        "choices": [
+                            {
+                                "message": {
+                                    "role": "assistant",
+                                    "content": None,
+                                    "tool_calls": [
+                                        {
+                                            "id": "call_1",
+                                            "type": "function",
+                                            "function": {
+                                                "name": tool_name,
+                                                "arguments": '{"query": "登录"}',
+                                            },
+                                        }
+                                    ],
+                                }
+                            }
+                        ]
+                    }
+                )
+            return FakeResp(
+                {"choices": [{"message": {"role": "assistant", "content": "文档内容"}}]}
+            )
+
+    fake = SeqLLMClient()
+    monkeypatch.setattr(bot_core.httpx, "AsyncClient", lambda *a, **k: fake)
+
+    reply = asyncio.run(bot_core.generate_reply(db, conversation, bot))
+    assert reply == "文档内容"
+
+    # 首次请求：暴露 kb 工具，且不注入系统上下文
+    first_url, first_kwargs = fake.posts[0]
+    tools = first_kwargs["json"].get("tools") or []
+    assert any(t["function"]["name"] == tool_name for t in tools)
+    assert not any(m["role"] == "system" for m in first_kwargs["json"]["messages"])
+
+    # 第二轮请求：包含 kb 工具调用结果
+    second_url, second_kwargs = fake.posts[1]
+    assert any(
+        m["role"] == "tool" and "知识内容" in m["content"]
+        for m in second_kwargs["json"]["messages"]
     )
 
 
