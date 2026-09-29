@@ -59,6 +59,28 @@ def test_update_wecom_bot():
     db.close()
 
 
+def test_update_wecom_bot_blank_token_preserves_existing():
+    """编辑时 token 传空串不应清空已有 token。"""
+    db = _db()
+    bot = models.WecomBot(
+        id=1, name="A", token="abc", aes_key="xyz", enabled=1
+    )
+    db.add(bot)
+    db.commit()
+    out = admin_mod.update_wecom_bot(
+        bot_id=1,
+        payload=schemas.WecomBotUpdate(token="", aes_key="", name="B"),
+        admin=None,
+        db=db,
+    )
+    assert out.name == "B"
+    assert out.token_masked != ""
+    db.refresh(bot)
+    assert bot.token == "abc"
+    assert bot.aes_key == "xyz"
+    db.close()
+
+
 def test_delete_wecom_bot():
     db = _db()
     bot = models.WecomBot(id=1, name="A", token="abc", enabled=1)

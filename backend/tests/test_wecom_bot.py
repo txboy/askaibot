@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 
 import pytest
 from sqlalchemy import create_engine
@@ -408,6 +409,49 @@ def test_receive_text_flow(db, monkeypatch):
     assert sent == [("zhangsan", "在的，请讲")]
 
 
+def test_receive_text_flow_json_body(db, monkeypatch):
+    """企微回调以 JSON {...encrypt...} 发送时也应正常解密处理。"""
+    bot = _bot()
+    db.add(bot)
+    db.commit()
+
+    xml = "<xml><ToUserName>corp123</ToUserName><FromUserName>wangwu</FromUserName><MsgType>text</MsgType><Content>json消息</Content></xml>"
+    enc_str = base64.b64encode(wc.encrypt_msg(xml, AES_KEY, "")).decode()
+    body = json.dumps({"encrypt": enc_str}).encode()
+    sig = wc.signature("token", "123", "nonce", enc_str)
+
+    sent = []
+
+    async def fake_reply(db, conversation, bot):
+        return "收到json"
+
+    async def fake_send(touser, content, agent_id, corp_id, secret):
+        sent.append((touser, content))
+
+    monkeypatch.setattr(wecom_router.bot_core, "generate_reply", fake_reply)
+    monkeypatch.setattr(wecom_router.bot_core, "send_text", fake_send)
+
+    class FakeRequest:
+        async def body(self):
+            return body
+
+    async def run():
+        return await wecom_router.receive(
+            bot_id=1,
+            request=FakeRequest(),
+            msg_signature=sig,
+            timestamp="123",
+            nonce="nonce",
+            db=db,
+        )
+
+    resp = asyncio.run(run())
+    assert resp.status_code == 200
+    user = db.query(models.User).filter(models.User.wecom_userid == "wangwu").first()
+    assert user is not None
+    assert sent and sent[0][1] == "收到json"
+
+
 def test_receive_image_creates_attachment(db, monkeypatch):
     bot = _bot()
     db.add(bot)
@@ -510,3 +554,50 @@ def test_verify_returns_echostr(db):
         db=db,
     )
     assert resp.body == plain.encode()
+
+
+def test_verify_accepts_empty_embedded_receive_id(db):
+    """企微 URL 校验的 echostr 内嵌 receive_id 为空（实际观察），应校验成功。"""
+    bot = _bot()
+    db.add(bot)
+    db.commit()
+    plain = "random-echo-string"
+    enc_str = base64.b64encode(wc.encrypt_msg(plain, AES_KEY, "")).decode()
+    sig = wc.signature("token", "123", "nonce", enc_str)
+
+    resp = wecom_router.verify(
+        bot_id=1,
+        msg_signature=sig,
+        timestamp="123",
+        nonce="nonce",
+        echostr=enc_str,
+        db=db,
+    )
+    assert resp.status_code == 200
+    assert resp.body == plain.encode()
+
+
+def test_parse_message_json_aibot():
+    """解析企微 AI 机器人 JSON 消息。"""
+    payload = json.dumps(
+        {
+            "msgid": "c65830ad7375758",
+            "aibotid": "aibnyDOsDtf8oeifqJi6Ucj4If1Xzu6qRrz",
+            "chattype": "single",
+            "from": {"userid": "ZhongShengLu"},
+            "msgtype": "text",
+            "text": {"content": "你好"},
+        }
+    )
+    msg = wecom_router._parse_message(payload)
+    assert msg["FromUserName"] == "ZhongShengLu"
+    assert msg["MsgType"] == "text"
+    assert msg["Content"] == "你好"
+    assert msg["ToUserName"] == "aibnyDOsDtf8oeifqJi6Ucj4If1Xzu6qRrz"
+
+
+def test_parse_message_xml():
+    payload = "<xml><FromUserName>w001</FromUserName><MsgType>text</MsgType><Content>hi</Content></xml>"
+    msg = wecom_router._parse_message(payload)
+    assert msg["FromUserName"] == "w001"
+    assert msg["Content"] == "hi"

@@ -176,7 +176,6 @@ async function saveBot() {
       provider: f.provider || props.provider,
       corp_id: f.corp_id,
       agent_id: f.agent_id,
-      token: f.token,
       kb_ids: (f.kb_ids || []).join(','),
       mcp_ids: (f.mcp_ids || []).join(','),
       skill_ids: (f.skill_ids || []).join(','),
@@ -188,6 +187,7 @@ async function saveBot() {
     }
     if (f.secret) body.secret = f.secret
     if (f.aes_key) body.aes_key = f.aes_key
+    if (f.token) body.token = f.token
     if (f.id) {
       await api.adminUpdateWecomBot(f.id, body)
     } else {
@@ -344,8 +344,8 @@ onMounted(loadBots)
               <label>{{ botIsDingtalk ? 'AppKey' : botIsFeishu ? 'AppID' : 'CorpID' }}<input v-model="editingBot.corp_id" class="input" :placeholder="botIsDingtalk ? '钉钉应用 AppKey' : botIsFeishu ? '飞书应用 AppID' : '留空使用企微设置中的 CorpID'" /></label>
               <label>{{ botIsDingtalk ? 'AppSecret' : botIsFeishu ? 'AppSecret' : '应用 Secret' }}<input v-model="editingBot.secret" type="password" class="input" :placeholder="editingBot.id ? '留空不修改' : (botIsDingtalk ? '钉钉应用 AppSecret' : botIsFeishu ? '飞书应用 AppSecret' : '应用 Secret')" /></label>
               <label v-if="!botIsFeishu">AgentId<input v-model="editingBot.agent_id" class="input" :placeholder="botIsDingtalk ? '钉钉应用 AgentId' : '应用 AgentId'" /></label>
-              <label>{{ botIsDingtalk || botIsFeishu ? 'URL 验证 Token' : 'Token' }}<input v-model="editingBot.token" type="password" class="input" :placeholder="editingBot.id ? (editingBot.token_masked || '已设置（留空不修改）') : (botIsFeishu ? '校验 Token（选填）' : '回调 Token')" /></label>
-              <label>{{ botIsFeishu ? 'EncryptKey' : 'EncodingAESKey' }}<input v-model="editingBot.aes_key" type="password" class="input" :placeholder="editingBot.id ? '已设置（留空不修改）' : (botIsFeishu ? 'Encrypt Key（选填）' : 'EncodingAESKey')" /></label>
+              <label>{{ botIsDingtalk || botIsFeishu ? 'URL 验证 Token' : 'Token' }}<input v-model="editingBot.token" type="password" class="input" :placeholder="editingBot.id ? (editingBot.token_masked ? '已设置（留空不修改）' : (botIsFeishu ? '未设置（选填）' : '未设置（回调必填）')) : (botIsFeishu ? '校验 Token（选填）' : '回调 Token')" /></label>
+              <label>{{ botIsFeishu ? 'EncryptKey' : 'EncodingAESKey' }}<input v-model="editingBot.aes_key" type="password" class="input" :placeholder="editingBot.id ? (editingBot.aes_key_set ? '已设置（留空不修改）' : (botIsFeishu ? '未设置（选填）' : '未设置（回调必填）')) : (botIsFeishu ? 'Encrypt Key（选填）' : 'EncodingAESKey')" /></label>
             </div>
             <label>接口
               <select v-model="editingBot.endpoint_id" class="input">

@@ -123,6 +123,9 @@ def update_wecom_bot(
     ):
         val = getattr(payload, field)
         if val is not None:
+            # token/aes_key 为空串时视为“不修改”，避免编辑时误清空
+            if field in ("token", "aes_key") and not val:
+                continue
             setattr(bot, field, val)
     if payload.secret:
         bot.secret = payload.secret

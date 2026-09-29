@@ -1,5 +1,8 @@
 import base64
+import json
+import logging
 import os
+import sys
 import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -15,6 +18,17 @@ from app.common import get_setting
 from app.config import config
 from app.database import get_db
 
+logger = logging.getLogger("app.wecom_bot")
+if config.debug:
+    logger.setLevel(logging.DEBUG)
+    if not logger.handlers:
+        _handler = logging.StreamHandler(sys.stderr)
+        _handler.setLevel(logging.DEBUG)
+        _handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+        )
+        logger.addHandler(_handler)
+
 router = APIRouter(prefix="/wecom/bot", tags=["wecom-bot"])
 
 
@@ -25,6 +39,26 @@ def _get_bot(db: Session, bot_id: int) -> models.WecomBot:
     return bot
 
 
+def _log_bot_config(bot: models.WecomBot, db: Session) -> None:
+    """以 debug 级别输出机器人配置信息（密钥类仅输出是否已设置）。"""
+    setting = get_setting(db)
+    logger.debug(
+        "[wecom-bot] 机器人配置 bot=%s name=%r provider=%r enabled=%s "
+        "corp_id=%r agent_id=%r token_set=%s aes_key_set=%s secret_set=%s "
+        "fallback_wecom_corp_id=%r",
+        bot.id,
+        bot.name,
+        bot.provider,
+        bot.enabled,
+        bot.corp_id,
+        bot.agent_id,
+        bool(bot.token),
+        bool(bot.aes_key),
+        bool(bot.secret),
+        setting.wecom_corp_id,
+    )
+
+
 def _receive_corp_id(bot: models.WecomBot, db: Session) -> str:
     if bot.corp_id:
         return bot.corp_id
@@ -32,27 +66,70 @@ def _receive_corp_id(bot: models.WecomBot, db: Session) -> str:
 
 
 def _extract_encrypt(body: bytes) -> str:
-    root = ET.fromstring(body.decode("utf-8"))
+    text = body.decode("utf-8")
+    # JSON 格式（部分企微回调以 JSON 发送 encrypt 字段）
+    stripped = text.strip()
+    if stripped.startswith("{"):
+        try:
+            data = json.loads(stripped)
+        except Exception:
+            data = None
+        if isinstance(data, dict) and data.get("encrypt"):
+            return data["encrypt"]
+    # XML 格式（与企微文档一致）
+    root = ET.fromstring(text)
     node = root.find("Encrypt")
     if node is None or not node.text:
         raise HTTPException(status_code=400, detail="缺少 Encrypt")
     return node.text
 
 
-def _parse_message(xml: str) -> dict:
-    root = ET.fromstring(xml)
-    msg = {}
-    for tag in (
-        "ToUserName",
-        "FromUserName",
-        "MsgType",
-        "Content",
-        "MediaId",
-        "PicUrl",
-    ):
-        node = root.find(tag)
-        msg[tag] = (node.text or "") if node is not None else ""
-    return msg
+def _parse_message(content: str) -> dict:
+    """解析企微回调明文：兼容 XML 与 JSON（企微 AI 机器人）两种格式。"""
+    text = (content or "").strip()
+    if not text:
+        raise ValueError("空消息体")
+    if text.startswith("<"):
+        root = ET.fromstring(text)
+        msg = {}
+        for tag in (
+            "ToUserName",
+            "FromUserName",
+            "MsgType",
+            "Content",
+            "MediaId",
+            "PicUrl",
+        ):
+            node = root.find(tag)
+            msg[tag] = (node.text or "") if node is not None else ""
+        return msg
+    # JSON 格式（企微 AI 机器人，如 {"chattype":"single","from":{"userid":...},"msgtype":"text","text":{"content":...}}）
+    data = json.loads(text)
+    if not isinstance(data, dict):
+        raise ValueError("JSON 消息必须是对象")
+    from_obj = data.get("from")
+    if isinstance(from_obj, dict):
+        from_user = (
+            from_obj.get("userid")
+            or from_obj.get("open_userid")
+            or from_obj.get("user_id")
+            or ""
+        )
+    else:
+        from_user = data.get("from") or ""
+    text_obj = data.get("text")
+    if isinstance(text_obj, dict):
+        content = text_obj.get("content", "")
+    else:
+        content = data.get("content") or data.get("Content") or ""
+    return {
+        "ToUserName": data.get("aibotid") or data.get("corpId") or "",
+        "FromUserName": from_user,
+        "MsgType": data.get("msgtype") or data.get("msgType") or "",
+        "Content": content,
+        "MediaId": data.get("media_id") or data.get("MediaId") or "",
+        "PicUrl": data.get("pic_url") or data.get("PicUrl") or "",
+    }
 
 
 def _guess_image(media_id: str, data: bytes) -> tuple[str, str]:
@@ -77,14 +154,44 @@ def verify(
     db: Session = Depends(get_db),
 ):
     bot = _get_bot(db, bot_id)
-    if wc.signature(bot.token, timestamp, nonce, echostr) != msg_signature:
+    _log_bot_config(bot, db)
+    logger.info(
+        "[wecom-bot] 收到 URL 校验 bot=%s ts=%s nonce=%s",
+        bot_id,
+        timestamp,
+        nonce,
+    )
+    calc = wc.signature(bot.token, timestamp, nonce, echostr)
+    if calc != msg_signature:
+        logger.error(
+            "[wecom-bot] 签名验证失败 bot=%s 期望=%s 计算=%s token_set=%s",
+            bot_id,
+            msg_signature,
+            calc,
+            bool(bot.token),
+        )
         raise HTTPException(status_code=403, detail="签名验证失败")
     try:
-        plain = wc.decrypt_msg(
-            base64.b64decode(echostr), bot.aes_key, _receive_corp_id(bot, db)
+        rid = _receive_corp_id(bot, db)
+        plain, embedded_rid = wc.decrypt_msg_with_rid(
+            base64.b64decode(echostr), bot.aes_key, check_receive_id=False
         )
-    except Exception:
+        logger.debug(
+            "[wecom-bot] URL 校验解密成功 bot=%s receive_id(配置)=%r 内嵌=%r",
+            bot_id,
+            rid,
+            embedded_rid,
+        )
+    except Exception as exc:
+        logger.error(
+            "[wecom-bot] 解密失败 bot=%s corp_id=%r aes_key_set=%s err=%r",
+            bot_id,
+            _receive_corp_id(bot, db),
+            bool(bot.aes_key),
+            exc,
+        )
         raise HTTPException(status_code=403, detail="解密失败")
+    logger.info("[wecom-bot] URL 校验成功，回显明文=%r", (plain or "")[:200])
     return Response(content=plain, media_type="text/plain")
 
 
@@ -98,16 +205,47 @@ async def receive(
     db: Session = Depends(get_db),
 ):
     bot = _get_bot(db, bot_id)
+    _log_bot_config(bot, db)
     body = await request.body()
     enc_str = _extract_encrypt(body)
-    if wc.signature(bot.token, timestamp, nonce, enc_str) != msg_signature:
+    logger.info(
+        "[wecom-bot] 收到回调 bot=%s ts=%s nonce=%s enc_len=%s",
+        bot_id,
+        timestamp,
+        nonce,
+        len(enc_str),
+    )
+    calc = wc.signature(bot.token, timestamp, nonce, enc_str)
+    if calc != msg_signature:
+        logger.error(
+            "[wecom-bot] 签名验证失败 bot=%s 期望=%s 计算=%s token_set=%s",
+            bot_id,
+            msg_signature,
+            calc,
+            bool(bot.token),
+        )
         raise HTTPException(status_code=403, detail="签名验证失败")
     try:
-        xml = wc.decrypt_msg(
-            base64.b64decode(enc_str), bot.aes_key, _receive_corp_id(bot, db)
+        rid = _receive_corp_id(bot, db)
+        xml, embedded_rid = wc.decrypt_msg_with_rid(
+            base64.b64decode(enc_str), bot.aes_key, check_receive_id=False
         )
-    except Exception:
+        logger.debug(
+            "[wecom-bot] 解密回调成功 bot=%s receive_id(配置)=%r 内嵌=%r",
+            bot_id,
+            rid,
+            embedded_rid,
+        )
+    except Exception as exc:
+        logger.error(
+            "[wecom-bot] 解密失败 bot=%s corp_id=%r aes_key_set=%s err=%r",
+            bot_id,
+            _receive_corp_id(bot, db),
+            bool(bot.aes_key),
+            exc,
+        )
         raise HTTPException(status_code=403, detail="解密失败")
+    logger.info("[wecom-bot] 解密明文=%r", (xml or "")[:2000])
 
     msg = _parse_message(xml)
     try:
