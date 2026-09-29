@@ -37,6 +37,7 @@ def _dept_out(db: Session, d: models.Department) -> schemas.DepartmentOut:
         member_count=member_count,
         admin_id=admin.id if admin else None,
         admin_username=admin.username if admin else None,
+        token_limit_daily=d.token_limit_daily,
         created_at=d.created_at,
     )
 
@@ -55,7 +56,11 @@ def create_department(
     admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
-    d = models.Department(name=payload.name, description=payload.description or "")
+    d = models.Department(
+        name=payload.name,
+        description=payload.description or "",
+        token_limit_daily=payload.token_limit_daily or None,
+    )
     db.add(d)
     db.commit()
     db.refresh(d)
@@ -85,6 +90,8 @@ def update_department(
         d.name = payload.name
     if payload.description is not None:
         d.description = payload.description
+    if payload.token_limit_daily is not None:
+        d.token_limit_daily = payload.token_limit_daily or None
     db.commit()
     audit(
         db,

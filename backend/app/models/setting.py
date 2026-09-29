@@ -59,3 +59,4 @@ class Setting(Base):
     search_scope: Mapped[str] = mapped_column(
         String, default="global"
     )  # global / group
+    token_limit_daily: Mapped[int | None] = mapped_column(Integer, nullable=True)

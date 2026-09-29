@@ -1,4 +1,5 @@
 <script setup>
+import { computed } from 'vue'
 import Logo from '../Logo.vue'
 import { useChat } from '../../composables/useChat'
 
@@ -14,7 +15,21 @@ const {
   avatarSrc,
   openProfile,
   logout,
+  quota,
 } = useChat()
+
+const quotaLow = computed(() => {
+  const q = quota.value
+  if (!q || q.limit == null) return false
+  return q.remaining === 0 || q.remaining <= Math.max(1, Math.floor(q.limit * 0.1))
+})
+
+const quotaPct = computed(() => {
+  const q = quota.value
+  if (!q || q.limit == null || q.limit <= 0) return 0
+  const used = Math.max(0, q.limit - (q.remaining ?? 0))
+  return Math.min(100, Math.round((used / q.limit) * 100))
+})
 </script>
 
 <template>
@@ -43,17 +58,32 @@ const {
       <p v-if="!conversations.length" class="empty">暂无会话</p>
     </div>
 
-    <div class="user-bar">
-      <button class="user-info" title="编辑资料" @click="openProfile">
-        <div class="avatar">
-          <img v-if="avatarSrc" :src="avatarSrc" alt="头像" />
-          <span v-else>{{ (me()?.nickname || 'U').slice(0, 1) }}</span>
+    <div class="sidebar-bottom">
+      <div
+        v-if="quota && quota.limit != null"
+        class="quota-card"
+        :class="{ low: quotaLow }"
+      >
+        <div class="quota-head">
+          <span class="quota-label">今日额度</span>
+          <span class="quota-value">剩余 {{ quota.remaining }} / {{ quota.limit }}</span>
         </div>
-        <div class="user-name">{{ me()?.nickname || '用户' }}</div>
-      </button>
-      <button class="icon-btn" title="退出" @click="logout">
-        <font-awesome-icon icon="right-from-bracket" />
-      </button>
+        <div class="quota-bar">
+          <div class="quota-fill" :style="{ width: quotaPct + '%' }"></div>
+        </div>
+      </div>
+      <div class="user-bar">
+        <button class="user-info" title="编辑资料" @click="openProfile">
+          <div class="avatar">
+            <img v-if="avatarSrc" :src="avatarSrc" alt="头像" />
+            <span v-else>{{ (me()?.nickname || 'U').slice(0, 1) }}</span>
+          </div>
+          <div class="user-name">{{ me()?.nickname || '用户' }}</div>
+        </button>
+        <button class="icon-btn" title="退出" @click="logout">
+          <font-awesome-icon icon="right-from-bracket" />
+        </button>
+      </div>
     </div>
   </aside>
 </template>
@@ -158,11 +188,63 @@ const {
   margin-top: 24px;
 }
 
+.sidebar-bottom {
+  padding-top: 6px;
+}
+
+.quota-card {
+  padding: 10px 12px;
+  margin: 0 4px 8px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.quota-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 7px;
+}
+
+.quota-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.quota-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.quota-card.low .quota-value {
+  color: var(--danger);
+}
+
+.quota-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.quota-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.quota-card.low .quota-fill {
+  background: var(--danger);
+}
+
 .user-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px;
+  padding: 10px 6px 4px;
   border-top: 1px solid var(--border);
 }
 

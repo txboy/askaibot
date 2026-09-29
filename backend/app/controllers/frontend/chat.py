@@ -38,12 +38,27 @@ if config.debug:
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
+def _enforce_token_quota(db: Session, user: models.User) -> None:
+    """若用户今日 token 已达有效每日限额，则硬性拦截（429）。"""
+    from app.services import quota as quota_core
+
+    limit = quota_core.effective_token_limit(db, user)
+    if limit is None:
+        return
+    used = quota_core.used_tokens_today(db, user.id)
+    if used >= limit:
+        raise HTTPException(
+            status_code=429, detail="今日 Token 限额已用完，请明日再试或联系管理员"
+        )
+
+
 @router.post("")
 def chat(
     payload: schemas.ChatRequest,
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _enforce_token_quota(db, user)
     conversation = _get_owned_conversation(db, payload.conversation_id, user.id)
     endpoint = _resolve_endpoint(db, payload.endpoint_id, user)
     base_url = endpoint.base_url.rstrip("/")

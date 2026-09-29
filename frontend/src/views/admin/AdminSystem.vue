@@ -32,6 +32,10 @@ const systemPrompt = ref('')
 const systemPromptMsg = ref('')
 const savingSystemPrompt = ref(false)
 
+const systemTokenLimit = ref(0)
+const systemTokenLimitMsg = ref('')
+const savingSystemTokenLimit = ref(false)
+
 const faviconFile = ref(null)
 const faviconPreview = ref('')
 const faviconSet = ref(false)
@@ -110,6 +114,7 @@ async function loadSystem() {
     adminSecret.value = r.admin_secret || ''
     assistantName.value = r.assistant_name || 'askai'
     systemPrompt.value = r.system_prompt || ''
+    systemTokenLimit.value = r.token_limit_daily ?? 0
     assistantAvatarSet.value = r.assistant_avatar_set
     assistantAvatarPreview.value = r.assistant_avatar_set ? '/api/assistant-avatar?t=' + Date.now() : ''
     siteMsg.value = ''
@@ -146,6 +151,21 @@ async function saveSystemPrompt() {
     systemPromptMsg.value = e.message
   } finally {
     savingSystemPrompt.value = false
+  }
+}
+
+async function saveSystemTokenLimit() {
+  savingSystemTokenLimit.value = true
+  systemTokenLimitMsg.value = ''
+  try {
+    const val = Number(systemTokenLimit.value) || 0
+    const r = await api.adminSaveSystem({ token_limit_daily: val })
+    systemTokenLimit.value = r.token_limit_daily ?? 0
+    systemTokenLimitMsg.value = '已保存'
+  } catch (e) {
+    systemTokenLimitMsg.value = e.message
+  } finally {
+    savingSystemTokenLimit.value = false
   }
 }
 
@@ -390,6 +410,18 @@ onMounted(() => {
         <button class="btn" :disabled="savingSystemPrompt" @click="saveSystemPrompt">{{ savingSystemPrompt ? '保存中…' : '保存提示词' }}</button>
       </div>
       <p class="hint" style="margin-top: 8px">优先级：机器人 &gt; 基础配置（按平台）&gt; 模型接口 &gt; 通用配置。此处为最低优先级，仅在没有更高层级提示词时生效。</p>
+    </div>
+
+    <h3 class="section-title">每日 Token 限额（系统级）</h3>
+    <div class="card">
+      <label class="sm-label">系统每日 Token 限额
+        <input v-model.number="systemTokenLimit" class="input" type="number" min="0" placeholder="0 表示不限" />
+      </label>
+      <div class="card-foot">
+        <p v-if="systemTokenLimitMsg" class="hint">{{ systemTokenLimitMsg }}</p>
+        <button class="btn" :disabled="savingSystemTokenLimit" @click="saveSystemTokenLimit">{{ savingSystemTokenLimit ? '保存中…' : '保存限额' }}</button>
+      </div>
+      <p class="hint" style="margin-top: 8px">对单个用户，生效限额取「个人 &gt; 部门 &gt; 系统」中第一个正数；全部未设置则不限额。达到限额后该用户今日将无法继续发起聊天。</p>
     </div>
 
     <h3 class="section-title">浏览器图标（Favicon）</h3>

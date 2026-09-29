@@ -251,6 +251,7 @@ class SystemOut(BaseModel):
     assistant_name: str
     assistant_avatar_set: bool
     system_prompt: str = ""
+    token_limit_daily: Optional[int] = None
 
 
 class SystemUpdate(BaseModel):
@@ -259,6 +260,7 @@ class SystemUpdate(BaseModel):
     admin_secret: Optional[str] = None
     assistant_name: Optional[str] = None
     system_prompt: Optional[str] = None
+    token_limit_daily: Optional[int] = None
 
 
 class SmsOut(BaseModel):
@@ -450,6 +452,8 @@ class AdminUserOut(BaseModel):
     last_active: Optional[datetime] = None
     total_tokens: int
     today_tokens: int
+    token_limit_daily: Optional[int] = None
+    token_limit_effective: Optional[int] = None
 
 
 class SettingOut(BaseModel):
@@ -657,11 +661,13 @@ class AdminMe(BaseModel):
 class DepartmentCreate(BaseModel):
     name: str
     description: Optional[str] = ""
+    token_limit_daily: Optional[int] = None
 
 
 class DepartmentUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    token_limit_daily: Optional[int] = None
 
 
 class DepartmentOut(BaseModel):
@@ -671,6 +677,7 @@ class DepartmentOut(BaseModel):
     member_count: int = 0
     admin_id: Optional[int] = None
     admin_username: Optional[str] = None
+    token_limit_daily: Optional[int] = None
     created_at: datetime
 
 
@@ -693,7 +700,6 @@ class AdminOut(BaseModel):
     role: str
     department_id: Optional[int] = None
     department_name: Optional[str] = None
-    created_at: datetime
 
 
 class AuditLogOut(BaseModel):
@@ -716,3 +722,9 @@ class AuditLogOut(BaseModel):
 class AuditPage(BaseModel):
     total: int
     items: list[AuditLogOut]
+
+
+class QuotaInfo(BaseModel):
+    limit: Optional[int] = None
+    used: int
+    remaining: Optional[int] = None

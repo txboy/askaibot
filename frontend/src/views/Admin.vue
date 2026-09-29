@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { api } from '../api'
 import { store } from '../store'
 import Logo from '../components/Logo.vue'
@@ -7,6 +7,10 @@ import AdminDashboard from './admin/AdminDashboard.vue'
 import AdminUsers from './admin/AdminUsers.vue'
 import AdminGroups from './admin/AdminGroups.vue'
 import AdminAgreements from './admin/AdminAgreements.vue'
+import AdminDepartments from './admin/AdminDepartments.vue'
+import AdminAdmins from './admin/AdminAdmins.vue'
+import AdminAudit from './admin/AdminAudit.vue'
+import AdminDeptStats from './admin/AdminDeptStats.vue'
 import AdminEndpoints from './admin/AdminEndpoints.vue'
 import AdminSms from './admin/AdminSms.vue'
 import AdminSearch from './admin/AdminSearch.vue'
@@ -27,10 +31,13 @@ const loggingIn = ref(false)
 const active = ref('dashboard')
 
 const isAdmin = () => !!store.adminToken
+const isSuper = computed(() => store.adminRole === 'super')
 
-const navItems = [
+const superNav = [
   { key: 'dashboard', label: '首页' },
   { key: 'users', label: '用户列表' },
+  { key: 'departments', label: '部门管理' },
+  { key: 'admins', label: '管理员' },
   { key: 'groups', label: '用户组' },
   { key: 'agreement', label: '协议管理' },
   { key: 'endpoints', label: '接口设置' },
@@ -43,12 +50,23 @@ const navItems = [
   { key: 'dingtalk', label: '钉钉设置' },
   { key: 'feishu', label: '飞书设置' },
   { key: 'system', label: '系统设置' },
+  { key: 'audit', label: '审计日志' },
   { key: 'password', label: '修改密码' },
 ]
+
+const deptNav = [
+  { key: 'users', label: '本部门用户' },
+  { key: 'dept-stats', label: '本部门用量' },
+  { key: 'password', label: '修改密码' },
+]
+
+const navItems = computed(() => (store.adminRole === 'dept' ? deptNav : superNav))
 
 const sectionMap = {
   dashboard: AdminDashboard,
   users: AdminUsers,
+  departments: AdminDepartments,
+  admins: AdminAdmins,
   groups: AdminGroups,
   agreement: AdminAgreements,
   endpoints: AdminEndpoints,
@@ -61,6 +79,8 @@ const sectionMap = {
   dingtalk: AdminDingtalk,
   feishu: AdminFeishu,
   system: AdminSystem,
+  audit: AdminAudit,
+  'dept-stats': AdminDeptStats,
   password: AdminPassword,
 }
 
@@ -70,6 +90,19 @@ function selectSection(key) {
   active.value = key
 }
 
+async function loadMe() {
+  try {
+    const me = await api.adminMe()
+    store.setAdminRole(me.role)
+  } catch (e) {
+    store.setAdminRole('')
+  }
+}
+
+onMounted(() => {
+  if (store.adminToken) loadMe()
+})
+
 async function doLogin() {
   if (!username.value || !password.value) return (msg.value = '请输入用户名和密码')
   msg.value = ''
@@ -77,6 +110,7 @@ async function doLogin() {
   try {
     const r = await api.adminLogin(username.value, password.value)
     store.setAdminToken(r.token)
+    await loadMe()
     active.value = 'dashboard'
   } catch (e) {
     msg.value = e.message

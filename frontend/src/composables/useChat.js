@@ -45,6 +45,8 @@ const skillPickerOpen = ref(false)
 const defaultAssistantName = ref('askai')
 const defaultAssistantAvatar = ref('')
 
+const quota = ref(null)
+
 let router = null
 const confirmDlg = useConfirm()
 
@@ -176,6 +178,14 @@ async function loadEndpoints() {
     }
   } catch {
     endpoints.value = []
+  }
+}
+
+async function refreshQuota() {
+  try {
+    quota.value = await api.quota()
+  } catch {
+    quota.value = null
   }
 }
 
@@ -317,6 +327,7 @@ async function send() {
     streaming.value = false
     scrollToBottom()
     loadConversations()
+    refreshQuota()
   }
 }
 
@@ -362,6 +373,7 @@ async function init() {
   } catch {}
   await loadConversations()
   await loadEndpoints()
+  await refreshQuota()
   try {
     knowledgeBases.value = await api.knowledgeBases()
   } catch {
@@ -417,6 +429,7 @@ export function useChat() {
     agreementOpen,
     pendingAgreements,
     acceptPendingAgreement,
+    quota,
     knowledgeBases,
     selectedKnowledgeBaseId,
     kbPickerOpen,

@@ -72,6 +72,7 @@ export const api = {
   knowledgeBases: () => request('/knowledge-bases'),
   mcpServers: () => request('/mcp'),
   skills: () => request('/skills'),
+  quota: () => request('/quota'),
 
   getTheme: () => request('/config/theme'),
   getDebug: () => request('/config/debug'),
@@ -83,6 +84,7 @@ export const api = {
   site: () => request('/config/site'),
 
   adminLogin: (username, password) => request('/admin/login', { method: 'POST', body: { username, password } }),
+  adminMe: () => adminRequest('/admin/me'),
   adminAccess: async (r) => {
     const res = await fetch(`${BASE}/admin/access?r=${encodeURIComponent(r || '')}`)
     return res.ok
@@ -174,6 +176,7 @@ export const api = {
   adminTestSkill: (id, tool, args = {}) => adminRequest(`/admin/skills/${id}/test`, { method: 'POST', body: { tool, args } }),
   adminUsers: () => adminRequest('/admin/users'),
   adminDeleteUser: (id) => adminRequest(`/admin/users/${id}`, { method: 'DELETE' }),
+  adminSetUserTokenLimit: (id, limit) => adminRequest(`/admin/users/${id}/token-limit`, { method: 'PUT', body: { token_limit_daily: limit } }),
   adminGroups: () => adminRequest('/admin/groups'),
   adminCreateGroup: (data) => adminRequest('/admin/groups', { method: 'POST', body: data }),
   adminUpdateGroup: (id, data) => adminRequest(`/admin/groups/${id}`, { method: 'PUT', body: data }),
@@ -186,6 +189,39 @@ export const api = {
   adminUpdateAgreement: (id, data) => adminRequest(`/admin/agreements/${id}`, { method: 'PUT', body: data }),
   adminDeleteAgreement: (id) => adminRequest(`/admin/agreements/${id}`, { method: 'DELETE' }),
   adminChangePassword: (data) => adminRequest('/admin/password', { method: 'PUT', body: data }),
+  adminDepartments: () => adminRequest('/admin/departments'),
+  adminCreateDepartment: (data) => adminRequest('/admin/departments', { method: 'POST', body: data }),
+  adminUpdateDepartment: (id, data) => adminRequest(`/admin/departments/${id}`, { method: 'PUT', body: data }),
+  adminDeleteDepartment: (id) => adminRequest(`/admin/departments/${id}`, { method: 'DELETE' }),
+  adminSetDeptAdmin: (id, adminId) => adminRequest(`/admin/departments/${id}/admins`, { method: 'PUT', body: { admin_id: adminId } }),
+  adminAssignUserDept: (userId, deptId) => adminRequest(`/admin/users/${userId}/department`, { method: 'PUT', body: { department_id: deptId } }),
+  adminDeptMine: () => adminRequest('/admin/departments/mine'),
+  adminDeptStats: () => adminRequest('/admin/departments/mine/stats'),
+  adminAdmins: () => adminRequest('/admin/admins'),
+  adminCreateAdmin: (data) => adminRequest('/admin/admins', { method: 'POST', body: data }),
+  adminUpdateAdmin: (id, data) => adminRequest(`/admin/admins/${id}`, { method: 'PUT', body: data }),
+  adminDeleteAdmin: (id) => adminRequest(`/admin/admins/${id}`, { method: 'DELETE' }),
+  adminAuditLogs: (params = {}) => {
+    const q = new URLSearchParams(params).toString()
+    return adminRequest(`/admin/audit-logs${q ? '?' + q : ''}`)
+  },
+  adminAuditExport: (params = {}) => {
+    const q = new URLSearchParams(params).toString()
+    return fetch(BASE + `/admin/audit-logs/export${q ? '?' + q : ''}`, {
+      headers: { Authorization: `Bearer ${store.adminToken}` },
+    }).then(async (res) => {
+      if (!res.ok) throw new Error(`导出失败 (${res.status})`)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'audit_logs.csv'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    })
+  },
   adminUploadLogo: (file) => {
     const form = new FormData()
     form.append('file', file)

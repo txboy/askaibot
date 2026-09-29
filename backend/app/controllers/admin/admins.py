@@ -22,7 +22,6 @@ def _admin_out(db: Session, a: models.Admin) -> schemas.AdminOut:
         role=a.role,
         department_id=a.department_id,
         department_name=department_name,
-        created_at=a.created_at,
     )
 
 

@@ -14,13 +14,14 @@ from app.services import skills as skill_core
 from app.services.kb import retrieve_kb
 from app.auth import create_admin_token, get_current_admin, require_super
 from app.common import get_setting, mask_key
+from app.services import quota as quota_core
 from app.config import config
 from app.database import get_db
 from app.security import hash_password, verify_password
 from app.services.audit import audit
 
 router = APIRouter()
-__all__ = ["delete_user", "list_users", "assign_user_department"]
+__all__ = ["delete_user", "list_users", "assign_user_department", "set_user_token_limit"]
 
 
 def _platform(u: models.User) -> str:
@@ -77,6 +78,8 @@ def _user_out(db: Session, u: models.User) -> schemas.AdminUserOut:
         last_active=last_active,
         total_tokens=total,
         today_tokens=today,
+        token_limit_daily=u.token_limit_daily,
+        token_limit_effective=quota_core.effective_token_limit(db, u),
     )
 
 
@@ -168,3 +171,28 @@ def assign_user_department(
     )
     db.commit()
     return {"ok": True}
+
+
+@router.put("/users/{user_id}/token-limit")
+def set_user_token_limit(
+    user_id: int,
+    payload: dict,
+    admin: models.Admin = Depends(require_super),
+    db: Session = Depends(get_db),
+):
+    user = db.get(models.User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    value = payload.get("token_limit_daily") or 0
+    user.token_limit_daily = int(value) if int(value) > 0 else None
+    db.commit()
+    audit(
+        db,
+        admin,
+        action="user.set_token_limit",
+        target_type="user",
+        target_id=user.id,
+        summary=f"设置用户 {user.nickname} 每日 Token 限额 {user.token_limit_daily or '不限'}",
+    )
+    db.commit()
+    return _user_out(db, user)

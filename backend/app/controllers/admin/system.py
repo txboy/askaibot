@@ -97,6 +97,7 @@ def get_system(
         assistant_name=setting.assistant_name or "askai",
         assistant_avatar_set=bool(setting.assistant_avatar),
         system_prompt=setting.system_prompt or "",
+        token_limit_daily=setting.token_limit_daily,
     )
 
 
@@ -117,6 +118,8 @@ def update_system(
         setting.assistant_name = payload.assistant_name.strip() or "askai"
     if payload.system_prompt is not None:
         setting.system_prompt = payload.system_prompt
+    if payload.token_limit_daily is not None:
+        setting.token_limit_daily = payload.token_limit_daily or None
     db.commit()
     db.refresh(setting)
     audit(
@@ -138,6 +141,7 @@ def update_system(
         assistant_name=setting.assistant_name or "askai",
         assistant_avatar_set=bool(setting.assistant_avatar),
         system_prompt=setting.system_prompt or "",
+        token_limit_daily=setting.token_limit_daily,
     )
 
 

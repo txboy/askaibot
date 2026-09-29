@@ -11,6 +11,7 @@ from .controllers.frontend import (
     conversations,
     endpoints,
     mcp,
+    quota,
     skills,
     uploads,
 )
@@ -106,6 +107,11 @@ def _ensure_columns() -> None:
             if name not in cols:
                 with engine.begin() as conn:
                     conn.execute(text(f"ALTER TABLE settings ADD COLUMN {name} {ddl}"))
+        if "token_limit_daily" not in cols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE settings ADD COLUMN token_limit_daily INTEGER")
+                )
         system_prompt_settings = {
             "system_prompt": "TEXT DEFAULT ''",
             "wecom_system_prompt": "TEXT DEFAULT ''",
@@ -165,6 +171,11 @@ def _ensure_columns() -> None:
         if "department_id" not in ucols:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE users ADD COLUMN department_id INTEGER"))
+        if "token_limit_daily" not in ucols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE users ADD COLUMN token_limit_daily INTEGER")
+                )
     if "admins" in insp.get_table_names():
         acols = {c["name"] for c in insp.get_columns("admins")}
         if "role" not in acols:
@@ -176,6 +187,13 @@ def _ensure_columns() -> None:
             with engine.begin() as conn:
                 conn.execute(
                     text("ALTER TABLE admins ADD COLUMN department_id INTEGER")
+                )
+    if "departments" in insp.get_table_names():
+        dcols = {c["name"] for c in insp.get_columns("departments")}
+        if "token_limit_daily" not in dcols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE departments ADD COLUMN token_limit_daily INTEGER")
                 )
     if "messages" in insp.get_table_names():
         cols = {c["name"] for c in insp.get_columns("messages")}
@@ -330,6 +348,7 @@ app.include_router(dingtalk_bot.router, prefix="/api")
 app.include_router(feishu_bot.router, prefix="/api")
 app.include_router(mcp.router, prefix="/api")
 app.include_router(skills.router, prefix="/api")
+app.include_router(quota.router, prefix="/api")
 
 
 @app.get("/api/health")

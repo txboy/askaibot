@@ -30,4 +30,5 @@ class User(Base):
     agreed_agreement_ids: Mapped[str] = mapped_column(String, default="")
     agreed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     department_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    token_limit_daily: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
