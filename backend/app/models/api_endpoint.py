@@ -11,14 +11,14 @@ class ApiEndpoint(Base):
     __tablename__ = "api_endpoints"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String)
-    base_url: Mapped[str] = mapped_column(String)
-    api_key: Mapped[str] = mapped_column(String, default="")
+    name: Mapped[str] = mapped_column(String(500))
+    base_url: Mapped[str] = mapped_column(String(500))
+    api_key: Mapped[str] = mapped_column(String(500), default="")
     models: Mapped[str] = mapped_column(Text, default="")  # 逗号/换行分隔的模型列表
     system_prompt: Mapped[str] = mapped_column(Text, default="")
     enabled: Mapped[int] = mapped_column(Integer, default=1)
     is_default: Mapped[int] = mapped_column(Integer, default=0)
-    scope: Mapped[str] = mapped_column(String, default="global")  # global / group
+    scope: Mapped[str] = mapped_column(String(500), default="global")  # global / group
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()

@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
-from .database import Base, SessionLocal, engine
+from .database import Base, get_engine, get_sessionlocal
 from .controllers.admin import router as admin_router
 from .controllers.frontend import (
     auth,
@@ -18,297 +18,211 @@ from .controllers.frontend import (
 from .controllers.webhook import dingtalk_bot, feishu_bot, wecom_bot
 from .security import hash_password
 
-Base.metadata.create_all(bind=engine)
+
+def _add_column(conn, table: str, column: str, definition: str) -> None:
+    """按方言追加列：SQLite/MySQL/PostgreSQL 用 ADD COLUMN，MSSQL/Oracle 用 ADD。"""
+    dialect = conn.dialect.name if hasattr(conn, "dialect") else ""
+    if dialect in ("mssql", "oracle"):
+        conn.execute(text(f"ALTER TABLE {table} ADD {column} {definition}"))
+    else:
+        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
 
 
-def _ensure_columns() -> None:
+def _ensure_columns(engine) -> None:
     insp = inspect(engine)
     if "settings" in insp.get_table_names():
         cols = {c["name"] for c in insp.get_columns("settings")}
-        if "logo_path" not in cols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text("ALTER TABLE settings ADD COLUMN logo_path VARCHAR DEFAULT ''")
-                )
-        if "theme" not in cols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text("ALTER TABLE settings ADD COLUMN theme VARCHAR DEFAULT 'warm'")
-                )
-        if "favicon_path" not in cols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "ALTER TABLE settings ADD COLUMN favicon_path VARCHAR DEFAULT ''"
-                    )
-                )
-        if "site_title" not in cols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "ALTER TABLE settings ADD COLUMN site_title VARCHAR DEFAULT 'askai'"
-                    )
-                )
-        if "debug_mode" not in cols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text("ALTER TABLE settings ADD COLUMN debug_mode INTEGER DEFAULT 1")
-                )
         with engine.begin() as conn:
+            if "logo_path" not in cols:
+                _add_column(conn, "settings", "logo_path", "VARCHAR DEFAULT ''")
+            if "theme" not in cols:
+                _add_column(conn, "settings", "theme", "VARCHAR DEFAULT 'warm'")
+            if "favicon_path" not in cols:
+                _add_column(conn, "settings", "favicon_path", "VARCHAR DEFAULT ''")
+            if "site_title" not in cols:
+                _add_column(conn, "settings", "site_title", "VARCHAR DEFAULT 'askai'")
+            if "debug_mode" not in cols:
+                _add_column(conn, "settings", "debug_mode", "INTEGER DEFAULT 1")
             conn.execute(
                 text("UPDATE settings SET site_title = 'askai' WHERE site_title = ''")
             )
-        for name, ddl in {
-            "admin_secret_enabled": "INTEGER DEFAULT 0",
-            "admin_secret": "VARCHAR DEFAULT ''",
-            "assistant_name": "VARCHAR DEFAULT 'askai'",
-            "assistant_avatar": "VARCHAR DEFAULT ''",
-        }.items():
-            if name not in cols:
-                with engine.begin() as conn:
-                    conn.execute(text(f"ALTER TABLE settings ADD COLUMN {name} {ddl}"))
-        with engine.begin() as conn:
+            for name, ddl in {
+                "admin_secret_enabled": "INTEGER DEFAULT 0",
+                "admin_secret": "VARCHAR DEFAULT ''",
+                "assistant_name": "VARCHAR DEFAULT 'askai'",
+                "assistant_avatar": "VARCHAR DEFAULT ''",
+            }.items():
+                if name not in cols:
+                    _add_column(conn, "settings", name, ddl)
             conn.execute(
                 text(
                     "UPDATE settings SET assistant_name = 'askai' WHERE assistant_name = ''"
                 )
             )
-        extra_settings = {
-            "sms_provider": "VARCHAR DEFAULT ''",
-            "sms_access_key_id": "VARCHAR DEFAULT ''",
-            "sms_secret": "VARCHAR DEFAULT ''",
-            "sms_sign_name": "VARCHAR DEFAULT ''",
-            "sms_template_code": "VARCHAR DEFAULT ''",
-            "sms_region": "VARCHAR DEFAULT ''",
-            "sms_sdk_app_id": "VARCHAR DEFAULT ''",
-            "sms_captcha_enabled": "INTEGER DEFAULT 1",
-            "sms_captcha_provider": "VARCHAR DEFAULT 'builtin'",
-            "sms_cooldown": "INTEGER DEFAULT 60",
-            "geetest_captcha_id": "VARCHAR DEFAULT ''",
-            "geetest_captcha_key": "VARCHAR DEFAULT ''",
-            "tencent_captcha_app_id": "VARCHAR DEFAULT ''",
-            "tencent_captcha_app_secret_key": "VARCHAR DEFAULT ''",
-            "aliyun_captcha_access_key_id": "VARCHAR DEFAULT ''",
-            "aliyun_captcha_access_key_secret": "VARCHAR DEFAULT ''",
-            "aliyun_captcha_scene_id": "VARCHAR DEFAULT ''",
-        }
-        for name, ddl in extra_settings.items():
-            if name not in cols:
-                with engine.begin() as conn:
-                    conn.execute(text(f"ALTER TABLE settings ADD COLUMN {name} {ddl}"))
-        search_settings = {
-            "search_provider": "VARCHAR DEFAULT ''",
-            "search_api_key": "VARCHAR DEFAULT ''",
-            "search_base_url": "VARCHAR DEFAULT ''",
-            "search_auto": "INTEGER DEFAULT 0",
-            "search_scope": "VARCHAR DEFAULT 'global'",
-        }
-        for name, ddl in search_settings.items():
-            if name not in cols:
-                with engine.begin() as conn:
-                    conn.execute(text(f"ALTER TABLE settings ADD COLUMN {name} {ddl}"))
-        if "token_limit_daily" not in cols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text("ALTER TABLE settings ADD COLUMN token_limit_daily INTEGER")
-                )
-        system_prompt_settings = {
-            "system_prompt": "TEXT DEFAULT ''",
-            "wecom_system_prompt": "TEXT DEFAULT ''",
-            "dingtalk_system_prompt": "TEXT DEFAULT ''",
-            "feishu_system_prompt": "TEXT DEFAULT ''",
-        }
-        for name, ddl in system_prompt_settings.items():
-            if name not in cols:
-                with engine.begin() as conn:
-                    conn.execute(text(f"ALTER TABLE settings ADD COLUMN {name} {ddl}"))
-        dingtalk_settings = {
-            "dingtalk_app_key": "VARCHAR DEFAULT ''",
-            "dingtalk_app_secret": "VARCHAR DEFAULT ''",
-            "dingtalk_agent_id": "VARCHAR DEFAULT ''",
-            "dingtalk_redirect": "VARCHAR DEFAULT ''",
-        }
-        for name, ddl in dingtalk_settings.items():
-            if name not in cols:
-                with engine.begin() as conn:
-                    conn.execute(text(f"ALTER TABLE settings ADD COLUMN {name} {ddl}"))
-        feishu_settings = {
-            "feishu_app_id": "VARCHAR DEFAULT ''",
-            "feishu_app_secret": "VARCHAR DEFAULT ''",
-            "feishu_redirect": "VARCHAR DEFAULT ''",
-        }
-        for name, ddl in feishu_settings.items():
-            if name not in cols:
-                with engine.begin() as conn:
-                    conn.execute(text(f"ALTER TABLE settings ADD COLUMN {name} {ddl}"))
+            extra_settings = {
+                "sms_provider": "VARCHAR DEFAULT ''",
+                "sms_access_key_id": "VARCHAR DEFAULT ''",
+                "sms_secret": "VARCHAR DEFAULT ''",
+                "sms_sign_name": "VARCHAR DEFAULT ''",
+                "sms_template_code": "VARCHAR DEFAULT ''",
+                "sms_region": "VARCHAR DEFAULT ''",
+                "sms_sdk_app_id": "VARCHAR DEFAULT ''",
+                "sms_captcha_enabled": "INTEGER DEFAULT 1",
+                "sms_captcha_provider": "VARCHAR DEFAULT 'builtin'",
+                "sms_cooldown": "INTEGER DEFAULT 60",
+                "geetest_captcha_id": "VARCHAR DEFAULT ''",
+                "geetest_captcha_key": "VARCHAR DEFAULT ''",
+                "tencent_captcha_app_id": "VARCHAR DEFAULT ''",
+                "tencent_captcha_app_secret_key": "VARCHAR DEFAULT ''",
+                "aliyun_captcha_access_key_id": "VARCHAR DEFAULT ''",
+                "aliyun_captcha_access_key_secret": "VARCHAR DEFAULT ''",
+                "aliyun_captcha_scene_id": "VARCHAR DEFAULT ''",
+            }
+            for name, ddl in extra_settings.items():
+                if name not in cols:
+                    _add_column(conn, "settings", name, ddl)
+            search_settings = {
+                "search_provider": "VARCHAR DEFAULT ''",
+                "search_api_key": "VARCHAR DEFAULT ''",
+                "search_base_url": "VARCHAR DEFAULT ''",
+                "search_auto": "INTEGER DEFAULT 0",
+                "search_scope": "VARCHAR DEFAULT 'global'",
+            }
+            for name, ddl in search_settings.items():
+                if name not in cols:
+                    _add_column(conn, "settings", name, ddl)
+            if "token_limit_daily" not in cols:
+                _add_column(conn, "settings", "token_limit_daily", "INTEGER")
+            system_prompt_settings = {
+                "system_prompt": "TEXT DEFAULT ''",
+                "wecom_system_prompt": "TEXT DEFAULT ''",
+                "dingtalk_system_prompt": "TEXT DEFAULT ''",
+                "feishu_system_prompt": "TEXT DEFAULT ''",
+            }
+            for name, ddl in system_prompt_settings.items():
+                if name not in cols:
+                    _add_column(conn, "settings", name, ddl)
+            dingtalk_settings = {
+                "dingtalk_app_key": "VARCHAR DEFAULT ''",
+                "dingtalk_app_secret": "VARCHAR DEFAULT ''",
+                "dingtalk_agent_id": "VARCHAR DEFAULT ''",
+                "dingtalk_redirect": "VARCHAR DEFAULT ''",
+            }
+            for name, ddl in dingtalk_settings.items():
+                if name not in cols:
+                    _add_column(conn, "settings", name, ddl)
+            feishu_settings = {
+                "feishu_app_id": "VARCHAR DEFAULT ''",
+                "feishu_app_secret": "VARCHAR DEFAULT ''",
+                "feishu_redirect": "VARCHAR DEFAULT ''",
+            }
+            for name, ddl in feishu_settings.items():
+                if name not in cols:
+                    _add_column(conn, "settings", name, ddl)
     if "users" in insp.get_table_names():
         ucols = {c["name"] for c in insp.get_columns("users")}
-        for name, ddl in {
-            "assistant_name": "VARCHAR DEFAULT ''",
-            "assistant_avatar": "VARCHAR DEFAULT ''",
-        }.items():
-            if name not in ucols:
-                with engine.begin() as conn:
-                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {name} {ddl}"))
-        if "dingtalk_userid" not in ucols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text("ALTER TABLE users ADD COLUMN dingtalk_userid VARCHAR")
-                )
-        if "feishu_userid" not in ucols:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE users ADD COLUMN feishu_userid VARCHAR"))
-        if "agreed_agreement_ids" not in ucols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "ALTER TABLE users ADD COLUMN agreed_agreement_ids VARCHAR DEFAULT ''"
-                    )
-                )
-        if "agreed_at" not in ucols:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE users ADD COLUMN agreed_at DATETIME"))
-        if "department_id" not in ucols:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE users ADD COLUMN department_id INTEGER"))
-        if "token_limit_daily" not in ucols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text("ALTER TABLE users ADD COLUMN token_limit_daily INTEGER")
-                )
+        with engine.begin() as conn:
+            for name, ddl in {
+                "assistant_name": "VARCHAR DEFAULT ''",
+                "assistant_avatar": "VARCHAR DEFAULT ''",
+            }.items():
+                if name not in ucols:
+                    _add_column(conn, "users", name, ddl)
+            if "dingtalk_userid" not in ucols:
+                _add_column(conn, "users", "dingtalk_userid", "VARCHAR")
+            if "feishu_userid" not in ucols:
+                _add_column(conn, "users", "feishu_userid", "VARCHAR")
+            if "agreed_agreement_ids" not in ucols:
+                _add_column(conn, "users", "agreed_agreement_ids", "VARCHAR DEFAULT ''")
+            if "agreed_at" not in ucols:
+                _add_column(conn, "users", "agreed_at", "DATETIME")
+            if "department_id" not in ucols:
+                _add_column(conn, "users", "department_id", "INTEGER")
+            if "token_limit_daily" not in ucols:
+                _add_column(conn, "users", "token_limit_daily", "INTEGER")
     if "admins" in insp.get_table_names():
         acols = {c["name"] for c in insp.get_columns("admins")}
-        if "role" not in acols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text("ALTER TABLE admins ADD COLUMN role VARCHAR DEFAULT 'super'")
-                )
-        if "department_id" not in acols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text("ALTER TABLE admins ADD COLUMN department_id INTEGER")
-                )
+        with engine.begin() as conn:
+            if "role" not in acols:
+                _add_column(conn, "admins", "role", "VARCHAR DEFAULT 'super'")
+            if "department_id" not in acols:
+                _add_column(conn, "admins", "department_id", "INTEGER")
     if "departments" in insp.get_table_names():
         dcols = {c["name"] for c in insp.get_columns("departments")}
-        if "token_limit_daily" not in dcols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text("ALTER TABLE departments ADD COLUMN token_limit_daily INTEGER")
-                )
+        with engine.begin() as conn:
+            if "token_limit_daily" not in dcols:
+                _add_column(conn, "departments", "token_limit_daily", "INTEGER")
     if "messages" in insp.get_table_names():
         cols = {c["name"] for c in insp.get_columns("messages")}
-        if "tokens" not in cols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text("ALTER TABLE messages ADD COLUMN tokens INTEGER DEFAULT 0")
-                )
-        if "endpoint_id" not in cols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text("ALTER TABLE messages ADD COLUMN endpoint_id INTEGER")
-                )
+        with engine.begin() as conn:
+            if "tokens" not in cols:
+                _add_column(conn, "messages", "tokens", "INTEGER DEFAULT 0")
+            if "endpoint_id" not in cols:
+                _add_column(conn, "messages", "endpoint_id", "INTEGER")
     if "conversations" in insp.get_table_names():
         ccols = {c["name"] for c in insp.get_columns("conversations")}
-        if "bot_id" not in ccols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text("ALTER TABLE conversations ADD COLUMN bot_id INTEGER")
-                )
-        if "mcp_ids" not in ccols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "ALTER TABLE conversations ADD COLUMN mcp_ids VARCHAR DEFAULT ''"
-                    )
-                )
-        if "skill_ids" not in ccols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "ALTER TABLE conversations ADD COLUMN skill_ids VARCHAR DEFAULT ''"
-                    )
-                )
+        with engine.begin() as conn:
+            if "bot_id" not in ccols:
+                _add_column(conn, "conversations", "bot_id", "INTEGER")
+            if "mcp_ids" not in ccols:
+                _add_column(conn, "conversations", "mcp_ids", "VARCHAR DEFAULT ''")
+            if "skill_ids" not in ccols:
+                _add_column(conn, "conversations", "skill_ids", "VARCHAR DEFAULT ''")
     if "knowledge_bases" in insp.get_table_names():
         kbcols = {c["name"] for c in insp.get_columns("knowledge_bases")}
-        for name, ddl in {
-            "provider": "VARCHAR DEFAULT 'dify'",
-            "dataset_ids": "VARCHAR DEFAULT ''",
-            "top_k": "INTEGER DEFAULT 5",
-            "mode": "VARCHAR DEFAULT 'frontend'",
-            "scope": "VARCHAR DEFAULT 'global'",
-        }.items():
-            if name not in kbcols:
-                with engine.begin() as conn:
-                    conn.execute(
-                        text(f"ALTER TABLE knowledge_bases ADD COLUMN {name} {ddl}")
-                    )
+        with engine.begin() as conn:
+            for name, ddl in {
+                "provider": "VARCHAR DEFAULT 'dify'",
+                "dataset_ids": "VARCHAR DEFAULT ''",
+                "top_k": "INTEGER DEFAULT 5",
+                "mode": "VARCHAR DEFAULT 'frontend'",
+                "scope": "VARCHAR DEFAULT 'global'",
+            }.items():
+                if name not in kbcols:
+                    _add_column(conn, "knowledge_bases", name, ddl)
     if "api_endpoints" in insp.get_table_names():
         ecols = {c["name"] for c in insp.get_columns("api_endpoints")}
-        if "scope" not in ecols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "ALTER TABLE api_endpoints ADD COLUMN scope VARCHAR DEFAULT 'global'"
-                    )
-                )
-        if "system_prompt" not in ecols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "ALTER TABLE api_endpoints ADD COLUMN system_prompt TEXT DEFAULT ''"
-                    )
-                )
+        with engine.begin() as conn:
+            if "scope" not in ecols:
+                _add_column(conn, "api_endpoints", "scope", "VARCHAR DEFAULT 'global'")
+            if "system_prompt" not in ecols:
+                _add_column(conn, "api_endpoints", "system_prompt", "TEXT DEFAULT ''")
     if "mcp_servers" in insp.get_table_names():
         mcols = {c["name"] for c in insp.get_columns("mcp_servers")}
-        if "scope" not in mcols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "ALTER TABLE mcp_servers ADD COLUMN scope VARCHAR DEFAULT 'global'"
-                    )
-                )
+        with engine.begin() as conn:
+            if "scope" not in mcols:
+                _add_column(conn, "mcp_servers", "scope", "VARCHAR DEFAULT 'global'")
     if "skills" in insp.get_table_names():
         scols = {c["name"] for c in insp.get_columns("skills")}
-        if "scope" not in scols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text("ALTER TABLE skills ADD COLUMN scope VARCHAR DEFAULT 'global'")
-                )
+        with engine.begin() as conn:
+            if "scope" not in scols:
+                _add_column(conn, "skills", "scope", "VARCHAR DEFAULT 'global'")
     if "wecom_bots" in insp.get_table_names():
         bcols = {c["name"] for c in insp.get_columns("wecom_bots")}
-        if "provider" not in bcols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "ALTER TABLE wecom_bots ADD COLUMN provider VARCHAR DEFAULT 'wecom'"
-                    )
-                )
-        if "mcp_ids" not in bcols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text("ALTER TABLE wecom_bots ADD COLUMN mcp_ids VARCHAR DEFAULT ''")
-                )
-        if "skill_ids" not in bcols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "ALTER TABLE wecom_bots ADD COLUMN skill_ids VARCHAR DEFAULT ''"
-                    )
-                )
-        if "system_prompt" not in bcols:
-            with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "ALTER TABLE wecom_bots ADD COLUMN system_prompt TEXT DEFAULT ''"
-                    )
-                )
+        with engine.begin() as conn:
+            if "provider" not in bcols:
+                _add_column(conn, "wecom_bots", "provider", "VARCHAR DEFAULT 'wecom'")
+            if "mcp_ids" not in bcols:
+                _add_column(conn, "wecom_bots", "mcp_ids", "VARCHAR DEFAULT ''")
+            if "skill_ids" not in bcols:
+                _add_column(conn, "wecom_bots", "skill_ids", "VARCHAR DEFAULT ''")
+            if "system_prompt" not in bcols:
+                _add_column(conn, "wecom_bots", "system_prompt", "TEXT DEFAULT ''")
 
 
-_ensure_columns()
+def recreate_schema(bind_engine) -> None:
+    """幂等建表 + 补列（用于启动与数据库切换后）。"""
+    Base.metadata.create_all(bind=bind_engine)
+    _ensure_columns(bind_engine)
+
+
+def setup_database() -> None:
+    """初始化当前数据库（仅当连接到的库已就绪时）。"""
+    recreate_schema(get_engine())
 
 
 def _seed_admin() -> None:
-    db: Session = SessionLocal()
+    db: Session = get_sessionlocal()()
     try:
         from . import models
 
@@ -325,6 +239,7 @@ def _seed_admin() -> None:
         db.close()
 
 
+setup_database()
 _seed_admin()
 
 app = FastAPI(title="聊天机器人")

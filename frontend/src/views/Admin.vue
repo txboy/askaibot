@@ -21,6 +21,7 @@ import AdminWecom from './admin/AdminWecom.vue'
 import AdminDingtalk from './admin/AdminDingtalk.vue'
 import AdminFeishu from './admin/AdminFeishu.vue'
 import AdminSystem from './admin/AdminSystem.vue'
+import AdminDatabase from './admin/AdminDatabase.vue'
 import AdminPassword from './admin/AdminPassword.vue'
 
 const username = ref('')
@@ -50,6 +51,7 @@ const superNav = [
   { key: 'dingtalk', label: '钉钉设置' },
   { key: 'feishu', label: '飞书设置' },
   { key: 'system', label: '系统设置' },
+  { key: 'database', label: '数据库' },
   { key: 'audit', label: '审计日志' },
   { key: 'password', label: '修改密码' },
 ]
@@ -79,6 +81,7 @@ const sectionMap = {
   dingtalk: AdminDingtalk,
   feishu: AdminFeishu,
   system: AdminSystem,
+  database: AdminDatabase,
   audit: AdminAudit,
   'dept-stats': AdminDeptStats,
   password: AdminPassword,

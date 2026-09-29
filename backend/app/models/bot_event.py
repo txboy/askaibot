@@ -12,5 +12,5 @@ class BotEvent(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     bot_id: Mapped[int] = mapped_column(Integer, ForeignKey("wecom_bots.id"))
-    event_id: Mapped[str] = mapped_column(String, unique=True, index=True)
+    event_id: Mapped[str] = mapped_column(String(191), unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

@@ -11,8 +11,8 @@ class UserGroup(Base):
     __tablename__ = "user_groups"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String)
-    description: Mapped[str] = mapped_column(String, default="")
+    name: Mapped[str] = mapped_column(String(500))
+    description: Mapped[str] = mapped_column(String(500), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
@@ -31,6 +31,6 @@ class GroupGrant(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     group_id: Mapped[int] = mapped_column(Integer, index=True)
     resource_type: Mapped[str] = mapped_column(
-        String, default=""
+        String(255), default=""
     )  # endpoint / knowledge_base / mcp / search / skill
     resource_id: Mapped[int] = mapped_column(Integer, default=0)

@@ -11,7 +11,7 @@ class Agreement(Base):
     __tablename__ = "agreements"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    title: Mapped[str] = mapped_column(String)
+    title: Mapped[str] = mapped_column(String(500))
     content: Mapped[str] = mapped_column(Text, default="")
     enabled: Mapped[int] = mapped_column(Integer, default=1)
     required: Mapped[int] = mapped_column(Integer, default=1)

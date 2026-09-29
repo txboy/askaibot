@@ -15,6 +15,7 @@ class Config(BaseSettings):
     sms_mock: bool = True
     upload_dir: str = "./data/uploads"
     max_upload_size: int = 20 * 1024 * 1024
+    db_config_file: str = "./data/db_config.json"
 
     skill_sandbox: str = "auto"  # auto / docker / local
     skill_runner_image: str = "askai-skill-runner"

@@ -11,23 +11,23 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    nickname: Mapped[str] = mapped_column(String, default="用户")
-    avatar: Mapped[str] = mapped_column(String, default="")
-    assistant_name: Mapped[str] = mapped_column(String, default="")
-    assistant_avatar: Mapped[str] = mapped_column(String, default="")
+    nickname: Mapped[str] = mapped_column(String(500), default="用户")
+    avatar: Mapped[str] = mapped_column(String(500), default="")
+    assistant_name: Mapped[str] = mapped_column(String(500), default="")
+    assistant_avatar: Mapped[str] = mapped_column(String(500), default="")
     phone: Mapped[str | None] = mapped_column(
-        String, unique=True, nullable=True, index=True
+        String(191), unique=True, nullable=True, index=True
     )
     wecom_userid: Mapped[str | None] = mapped_column(
-        String, unique=True, nullable=True, index=True
+        String(191), unique=True, nullable=True, index=True
     )
     dingtalk_userid: Mapped[str | None] = mapped_column(
-        String, unique=True, nullable=True, index=True
+        String(191), unique=True, nullable=True, index=True
     )
     feishu_userid: Mapped[str | None] = mapped_column(
-        String, unique=True, nullable=True, index=True
+        String(191), unique=True, nullable=True, index=True
     )
-    agreed_agreement_ids: Mapped[str] = mapped_column(String, default="")
+    agreed_agreement_ids: Mapped[str] = mapped_column(String(500), default="")
     agreed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     department_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     token_limit_daily: Mapped[int | None] = mapped_column(Integer, nullable=True)

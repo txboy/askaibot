@@ -14,7 +14,7 @@ class Message(Base):
     conversation_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("conversations.id"), index=True
     )
-    role: Mapped[str] = mapped_column(String, default="user")
+    role: Mapped[str] = mapped_column(String(500), default="user")
     content: Mapped[str] = mapped_column(Text, default="")
     tokens: Mapped[int] = mapped_column(Integer, default=0)
     endpoint_id: Mapped[int | None] = mapped_column(

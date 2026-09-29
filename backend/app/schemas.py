@@ -728,3 +728,43 @@ class QuotaInfo(BaseModel):
     limit: Optional[int] = None
     used: int
     remaining: Optional[int] = None
+
+
+class DbConfigIn(BaseModel):
+    type: str
+    path: Optional[str] = None
+    host: Optional[str] = None
+    port: Optional[str] = None
+    database: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    override: bool = False
+
+
+class DbInfoOut(BaseModel):
+    type: str
+    database: str
+    host: str
+    port: str
+    username: str
+    configured: bool
+    drivers: dict[str, bool]
+
+
+class DbTestResult(BaseModel):
+    ok: bool
+    message: str
+    dialect: str
+
+
+class DbSwitchResult(BaseModel):
+    ok: bool
+    message: str
+    dialect: str
+    backup: Optional[dict] = None
+
+
+class DbBackupResult(BaseModel):
+    ok: bool
+    message: str
+    path: str = ""

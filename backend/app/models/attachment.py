@@ -18,10 +18,10 @@ class Attachment(Base):
     message_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("messages.id"), nullable=True, index=True
     )
-    filename: Mapped[str] = mapped_column(String)
-    stored_name: Mapped[str] = mapped_column(String)
-    content_type: Mapped[str] = mapped_column(String, default="")
-    kind: Mapped[str] = mapped_column(String, default="text")  # image / text / doc
+    filename: Mapped[str] = mapped_column(String(500))
+    stored_name: Mapped[str] = mapped_column(String(500))
+    content_type: Mapped[str] = mapped_column(String(500), default="")
+    kind: Mapped[str] = mapped_column(String(500), default="text")  # image / text / doc
     extracted_text: Mapped[str] = mapped_column(Text, default="")
     size: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

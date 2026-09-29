@@ -15,7 +15,7 @@
 import sys
 
 from app.common import get_setting
-from app.database import SessionLocal
+from app.database import get_sessionlocal
 
 _reconfigure = getattr(sys.stdout, "reconfigure", None)
 if _reconfigure:
@@ -23,7 +23,7 @@ if _reconfigure:
 
 
 def main() -> None:
-    db = SessionLocal()
+    db = get_sessionlocal()()
     try:
         setting = get_setting(db)
         setting.admin_secret_enabled = 0

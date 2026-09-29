@@ -11,8 +11,14 @@ from app.config import config
 from app.services import feishu_bot as fs_core
 from app.services import feishu_crypto as fc
 from app import models
-from app.database import SessionLocal, get_db
+from app.database import get_db, get_sessionlocal
 from app.services.wecom_bot import generate_reply
+
+
+def SessionLocal():
+    """动态获取当前会话工厂（热切换后仍指向新库）。"""
+    return get_sessionlocal()()
+
 
 logger = logging.getLogger("app.feishu_bot")
 if config.debug:
