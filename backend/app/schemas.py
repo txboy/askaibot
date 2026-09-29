@@ -443,6 +443,8 @@ class AdminUserOut(BaseModel):
     nickname: str
     phone: Optional[str] = None
     platform: str = ""
+    department_id: Optional[int] = None
+    department_name: Optional[str] = None
     created_at: datetime
     conversation_count: int
     last_active: Optional[datetime] = None
@@ -605,3 +607,112 @@ class GroupOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class AgreementCreate(BaseModel):
+    title: str
+    content: str = ""
+    enabled: int = 1
+    required: int = 1
+
+
+class AgreementUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    enabled: Optional[int] = None
+    required: Optional[int] = None
+
+
+class AgreementOut(BaseModel):
+    id: int
+    title: str
+    content: str
+    enabled: int
+    required: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AgreementPublic(BaseModel):
+    id: int
+    title: str
+    content: str
+    required: int
+
+
+class AgreeRequest(BaseModel):
+    agreement_ids: list[int] = []
+
+
+class AdminMe(BaseModel):
+    username: str
+    role: str
+    department_id: Optional[int] = None
+    department_name: Optional[str] = None
+
+
+class DepartmentCreate(BaseModel):
+    name: str
+    description: Optional[str] = ""
+
+
+class DepartmentUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
+class DepartmentOut(BaseModel):
+    id: int
+    name: str
+    description: str
+    member_count: int = 0
+    admin_id: Optional[int] = None
+    admin_username: Optional[str] = None
+    created_at: datetime
+
+
+class AdminCreate(BaseModel):
+    username: str
+    password: str
+    role: str = "dept"
+    department_id: Optional[int] = None
+
+
+class AdminUpdate(BaseModel):
+    password: Optional[str] = None
+    role: Optional[str] = None
+    department_id: Optional[int] = None
+
+
+class AdminOut(BaseModel):
+    id: int
+    username: str
+    role: str
+    department_id: Optional[int] = None
+    department_name: Optional[str] = None
+    created_at: datetime
+
+
+class AuditLogOut(BaseModel):
+    id: int
+    admin_username: str
+    admin_role: str
+    department_id: Optional[int] = None
+    action: str
+    target_type: str
+    target_id: int
+    summary: str
+    ip: str
+    user_agent: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AuditPage(BaseModel):
+    total: int
+    items: list[AuditLogOut]

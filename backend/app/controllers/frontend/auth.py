@@ -771,3 +771,70 @@ async def feishu_free_login(
         db.commit()
         db.refresh(user)
     return schemas.TokenResponse(token=create_token(user.id), user=user)
+
+
+def _parse_agreed_ids(user: models.User) -> set[int]:
+    if not user.agreed_agreement_ids:
+        return set()
+    return {
+        int(x)
+        for x in user.agreed_agreement_ids.split(",")
+        if x.strip().isdigit()
+    }
+
+
+@router.get("/agreements", response_model=list[schemas.AgreementPublic])
+def list_public_agreements(db: Session = Depends(get_db)):
+    agreements = (
+        db.query(models.Agreement)
+        .filter(models.Agreement.enabled == 1)
+        .order_by(models.Agreement.id.asc())
+        .all()
+    )
+    return [
+        schemas.AgreementPublic(
+            id=a.id,
+            title=a.title,
+            content=a.content,
+            required=a.required,
+        )
+        for a in agreements
+    ]
+
+
+@router.get("/agreement-status", response_model=list[schemas.AgreementPublic])
+def agreement_status(
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    agreed = _parse_agreed_ids(user)
+    agreements = (
+        db.query(models.Agreement)
+        .filter(models.Agreement.enabled == 1, models.Agreement.required == 1)
+        .order_by(models.Agreement.id.asc())
+        .all()
+    )
+    return [
+        schemas.AgreementPublic(
+            id=a.id,
+            title=a.title,
+            content=a.content,
+            required=a.required,
+        )
+        for a in agreements
+        if a.id not in agreed
+    ]
+
+
+@router.post("/agree")
+def agree(
+    payload: schemas.AgreeRequest,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    agreed = _parse_agreed_ids(user)
+    agreed.update(payload.agreement_ids or [])
+    user.agreed_agreement_ids = ",".join(str(i) for i in sorted(agreed))
+    user.agreed_at = datetime.now()
+    db.commit()
+    return {"ok": True}

@@ -12,6 +12,9 @@ from .api_endpoint import ApiEndpoint
 from .skill import Skill, SkillAccess
 from .user_group import UserGroup, UserGroupMember, GroupGrant
 from .bot_event import BotEvent
+from .agreement import Agreement
+from .department import Department
+from .audit_log import AuditLog
 
 __all__ = [
     "Base",
@@ -31,4 +34,7 @@ __all__ = [
     "UserGroupMember",
     "GroupGrant",
     "BotEvent",
+    "Agreement",
+    "Department",
+    "AuditLog",
 ]

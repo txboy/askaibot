@@ -2,10 +2,10 @@ from fastapi import APIRouter
 from app import models, schemas
 from app.services import mcp as mcp_core
 
-from . import auth, system, sms, search, endpoints, knowledge_bases, mcp, skills, wecom_bots, integrations, users, groups
+from . import auth, system, sms, search, endpoints, knowledge_bases, mcp, skills, wecom_bots, integrations, users, groups, agreements, departments, admins, audit
 
 router = APIRouter(prefix='/admin', tags=['admin'])
-for m in (auth, system, sms, search, endpoints, knowledge_bases, mcp, skills, wecom_bots, integrations, users, groups):
+for m in (auth, system, sms, search, endpoints, knowledge_bases, mcp, skills, wecom_bots, integrations, users, groups, agreements, departments, admins, audit):
     router.include_router(m.router)
 
 from .auth import *
@@ -20,3 +20,7 @@ from .wecom_bots import *
 from .integrations import *
 from .users import *
 from .groups import *
+from .agreements import *
+from .departments import *
+from .admins import *
+from .audit import *

@@ -12,12 +12,13 @@ from app import models, schemas
 from app.services import mcp as mcp_core
 from app.services import skills as skill_core
 from app.services.kb import retrieve_kb
-from app.auth import create_admin_token, get_current_admin
+from app.auth import create_admin_token, require_super
 from app.common import get_setting, mask_key
 from app.config import config
 from app.database import get_db
 from app.security import hash_password, verify_password
 from app.services import groups as groups_core
+from app.services.audit import audit
 
 router = APIRouter()
 __all__ = [
@@ -46,7 +47,7 @@ def _endpoint_out(e: models.ApiEndpoint, db: Session) -> schemas.EndpointOut:
 
 @router.get("/endpoints", response_model=list[schemas.EndpointOut])
 def list_endpoints(
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     return [_endpoint_out(e, db) for e in db.query(models.ApiEndpoint).all()]
@@ -55,7 +56,7 @@ def list_endpoints(
 @router.post("/endpoints", response_model=schemas.EndpointOut)
 def create_endpoint(
     payload: schemas.EndpointCreate,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     endpoint = models.ApiEndpoint(
@@ -71,12 +72,21 @@ def create_endpoint(
     db.add(endpoint)
     db.commit()
     db.refresh(endpoint)
+    audit(
+        db,
+        admin,
+        action="endpoint.create",
+        target_type="endpoint",
+        target_id=endpoint.id,
+        summary=f"创建接口 {endpoint.name}",
+    )
+    db.commit()
     return _endpoint_out(endpoint, db)
 
 
 @router.get("/endpoints/usage")
 def endpoints_usage(
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     today_start = datetime.combine(datetime.now().date(), time.min)
@@ -123,7 +133,7 @@ def endpoints_usage(
 def update_endpoint(
     endpoint_id: int,
     payload: schemas.EndpointUpdate,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     endpoint = db.get(models.ApiEndpoint, endpoint_id)
@@ -155,18 +165,35 @@ def update_endpoint(
         groups_core.set_resource_grants(db, "endpoint", endpoint.id, payload.group_ids)
         db.commit()
         db.refresh(endpoint)
+    audit(
+        db,
+        admin,
+        action="endpoint.update",
+        target_type="endpoint",
+        target_id=endpoint.id,
+        summary=f"更新接口 {endpoint.name}",
+    )
+    db.commit()
     return _endpoint_out(endpoint, db)
 
 
 @router.delete("/endpoints/{endpoint_id}")
 def delete_endpoint(
     endpoint_id: int,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     endpoint = db.get(models.ApiEndpoint, endpoint_id)
     if not endpoint:
         raise HTTPException(status_code=404, detail="接口不存在")
+    audit(
+        db,
+        admin,
+        action="endpoint.delete",
+        target_type="endpoint",
+        target_id=endpoint.id,
+        summary=f"删除接口 {endpoint.name}",
+    )
     groups_core.set_resource_grants(db, "endpoint", endpoint.id, [])
     db.delete(endpoint)
     db.commit()

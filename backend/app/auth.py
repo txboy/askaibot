@@ -20,10 +20,11 @@ def create_token(user_id: int) -> str:
     return jwt.encode(payload, config.jwt_secret, algorithm=config.jwt_algorithm)
 
 
-def create_admin_token(username: str) -> str:
+def create_admin_token(username: str, role: str = "super", department_id: int | None = None) -> str:
     payload = {
         "sub": username,
-        "role": "admin",
+        "role": role,
+        "department_id": department_id,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=config.jwt_expire_minutes),
     }
     return jwt.encode(payload, config.jwt_secret, algorithm=config.jwt_algorithm)
@@ -60,7 +61,7 @@ def get_current_admin(
     db: Session = Depends(get_db),
 ) -> models.Admin:
     payload = _decode(credentials.credentials)
-    if payload.get("role") != "admin":
+    if payload.get("role") not in ("super", "dept"):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="需要管理员权限")
     admin = (
         db.query(models.Admin)
@@ -69,4 +70,28 @@ def get_current_admin(
     )
     if not admin:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="管理员不存在")
+    return admin
+
+
+def require_super(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+) -> models.Admin:
+    admin = get_current_admin(credentials=credentials, db=db)
+    if admin.role != "super":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="需要超级管理员权限"
+        )
+    return admin
+
+
+def require_dept(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+) -> models.Admin:
+    admin = get_current_admin(credentials=credentials, db=db)
+    if admin.role != "dept" or not admin.department_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="需要部门管理员权限"
+        )
     return admin

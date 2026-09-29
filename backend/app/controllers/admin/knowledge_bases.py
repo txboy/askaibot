@@ -12,12 +12,13 @@ from app import models, schemas
 from app.services import mcp as mcp_core
 from app.services import skills as skill_core
 from app.services.kb import retrieve_kb
-from app.auth import create_admin_token, get_current_admin
+from app.auth import create_admin_token, require_super
 from app.common import get_setting, mask_key
 from app.config import config
 from app.database import get_db
 from app.security import hash_password, verify_password
 from app.services import groups as groups_core
+from app.services.audit import audit
 
 router = APIRouter()
 __all__ = ["create_knowledge_base", "delete_knowledge_base", "list_knowledge_bases", "test_knowledge_base", "update_knowledge_base"]
@@ -40,7 +41,7 @@ def _kb_out(kb: models.KnowledgeBase, db: Session) -> schemas.KnowledgeBaseOut:
 
 @router.get("/knowledge-bases", response_model=list[schemas.KnowledgeBaseOut])
 def list_knowledge_bases(
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     return [_kb_out(kb, db) for kb in db.query(models.KnowledgeBase).all()]
@@ -48,7 +49,7 @@ def list_knowledge_bases(
 @router.post("/knowledge-bases", response_model=schemas.KnowledgeBaseOut)
 def create_knowledge_base(
     payload: schemas.KnowledgeBaseCreate,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     kb = models.KnowledgeBase(
@@ -66,13 +67,22 @@ def create_knowledge_base(
     db.add(kb)
     db.commit()
     db.refresh(kb)
+    audit(
+        db,
+        admin,
+        action="knowledge_base.create",
+        target_type="knowledge_base",
+        target_id=kb.id,
+        summary=f"创建知识库 {kb.name}",
+    )
+    db.commit()
     return _kb_out(kb, db)
 
 @router.put("/knowledge-bases/{kb_id}", response_model=schemas.KnowledgeBaseOut)
 def update_knowledge_base(
     kb_id: int,
     payload: schemas.KnowledgeBaseUpdate,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     kb = db.get(models.KnowledgeBase, kb_id)
@@ -104,17 +114,34 @@ def update_knowledge_base(
         groups_core.set_resource_grants(db, "knowledge_base", kb.id, payload.group_ids)
         db.commit()
         db.refresh(kb)
+    audit(
+        db,
+        admin,
+        action="knowledge_base.update",
+        target_type="knowledge_base",
+        target_id=kb.id,
+        summary=f"更新知识库 {kb.name}",
+    )
+    db.commit()
     return _kb_out(kb, db)
 
 @router.delete("/knowledge-bases/{kb_id}")
 def delete_knowledge_base(
     kb_id: int,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     kb = db.get(models.KnowledgeBase, kb_id)
     if not kb:
         raise HTTPException(status_code=404, detail="知识库不存在")
+    audit(
+        db,
+        admin,
+        action="knowledge_base.delete",
+        target_type="knowledge_base",
+        target_id=kb.id,
+        summary=f"删除知识库 {kb.name}",
+    )
     groups_core.set_resource_grants(db, "knowledge_base", kb.id, [])
     db.delete(kb)
     db.commit()
@@ -123,7 +150,7 @@ def delete_knowledge_base(
 @router.post("/knowledge-bases/test", response_model=dict)
 async def test_knowledge_base(
     payload: schemas.KnowledgeBaseTestRequest,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     results = await retrieve_kb(

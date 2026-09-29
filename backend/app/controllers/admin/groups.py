@@ -12,12 +12,13 @@ from app import models, schemas
 from app.services import mcp as mcp_core
 from app.services import skills as skill_core
 from app.services.kb import retrieve_kb
-from app.auth import create_admin_token, get_current_admin
+from app.auth import create_admin_token, require_super
 from app.common import get_setting, mask_key
 from app.config import config
 from app.database import get_db
 from app.security import hash_password, verify_password
 from app.services import groups as groups_core
+from app.services.audit import audit
 
 router = APIRouter()
 __all__ = ["create_group", "delete_group", "list_groups", "update_group"]
@@ -84,7 +85,7 @@ def _group_out(db: Session, g: models.UserGroup) -> schemas.GroupOut:
 
 @router.get("/groups", response_model=list[schemas.GroupOut])
 def list_groups(
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     return [_group_out(db, g) for g in db.query(models.UserGroup).all()]
@@ -93,7 +94,7 @@ def list_groups(
 @router.post("/groups", response_model=schemas.GroupOut)
 def create_group(
     payload: schemas.GroupCreate,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     group = models.UserGroup(
@@ -108,6 +109,15 @@ def create_group(
     _apply_grants(db, group.id, payload.grants)
     db.commit()
     db.refresh(group)
+    audit(
+        db,
+        admin,
+        action="group.create",
+        target_type="group",
+        target_id=group.id,
+        summary=f"创建用户组 {group.name}",
+    )
+    db.commit()
     return _group_out(db, group)
 
 
@@ -115,7 +125,7 @@ def create_group(
 def update_group(
     group_id: int,
     payload: schemas.GroupUpdate,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     group = db.get(models.UserGroup, group_id)
@@ -136,18 +146,35 @@ def update_group(
         _apply_grants(db, group.id, payload.grants)
     db.commit()
     db.refresh(group)
+    audit(
+        db,
+        admin,
+        action="group.update",
+        target_type="group",
+        target_id=group.id,
+        summary=f"更新用户组 {group.name}",
+    )
+    db.commit()
     return _group_out(db, group)
 
 
 @router.delete("/groups/{group_id}")
 def delete_group(
     group_id: int,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     group = db.get(models.UserGroup, group_id)
     if not group:
         raise HTTPException(status_code=404, detail="用户组不存在")
+    audit(
+        db,
+        admin,
+        action="group.delete",
+        target_type="group",
+        target_id=group.id,
+        summary=f"删除用户组 {group.name}",
+    )
     db.query(models.UserGroupMember).filter(
         models.UserGroupMember.group_id == group.id
     ).delete(synchronize_session=False)

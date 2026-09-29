@@ -12,11 +12,12 @@ from app import models, schemas
 from app.services import mcp as mcp_core
 from app.services import skills as skill_core
 from app.services.kb import retrieve_kb
-from app.auth import create_admin_token, get_current_admin
+from app.auth import create_admin_token, require_super
 from app.common import get_setting, mask_key
 from app.config import config
 from app.database import get_db
 from app.security import hash_password, verify_password
+from app.services.audit import audit
 
 router = APIRouter()
 __all__ = [
@@ -62,7 +63,7 @@ def _bot_out(bot: models.WecomBot, db: Session) -> schemas.WecomBotOut:
 @router.get("/wecom-bots", response_model=list[schemas.WecomBotOut])
 def list_wecom_bots(
     provider: str = "wecom",
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     q = db.query(models.WecomBot)
@@ -74,7 +75,7 @@ def list_wecom_bots(
 @router.post("/wecom-bots", response_model=schemas.WecomBotOut)
 def create_wecom_bot(
     payload: schemas.WecomBotCreate,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     bot = models.WecomBot(
@@ -96,6 +97,15 @@ def create_wecom_bot(
     db.add(bot)
     db.commit()
     db.refresh(bot)
+    audit(
+        db,
+        admin,
+        action="wecom_bot.create",
+        target_type="wecom_bot",
+        target_id=bot.id,
+        summary=f"创建机器人 {bot.name} ({bot.provider})",
+    )
+    db.commit()
     return _bot_out(bot, db)
 
 
@@ -103,7 +113,7 @@ def create_wecom_bot(
 def update_wecom_bot(
     bot_id: int,
     payload: schemas.WecomBotUpdate,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     bot = db.get(models.WecomBot, bot_id)
@@ -137,18 +147,35 @@ def update_wecom_bot(
         bot.enabled = payload.enabled
     db.commit()
     db.refresh(bot)
+    audit(
+        db,
+        admin,
+        action="wecom_bot.update",
+        target_type="wecom_bot",
+        target_id=bot.id,
+        summary=f"更新机器人 {bot.name}",
+    )
+    db.commit()
     return _bot_out(bot, db)
 
 
 @router.delete("/wecom-bots/{bot_id}")
 def delete_wecom_bot(
     bot_id: int,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     bot = db.get(models.WecomBot, bot_id)
     if not bot:
         raise HTTPException(status_code=404, detail="机器人不存在")
+    audit(
+        db,
+        admin,
+        action="wecom_bot.delete",
+        target_type="wecom_bot",
+        target_id=bot.id,
+        summary=f"删除机器人 {bot.name}",
+    )
     db.delete(bot)
     db.commit()
     return {"ok": True}

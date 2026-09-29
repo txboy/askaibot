@@ -12,11 +12,12 @@ from app import models, schemas
 from app.services import mcp as mcp_core
 from app.services import skills as skill_core
 from app.services.kb import retrieve_kb
-from app.auth import create_admin_token, get_current_admin
+from app.auth import create_admin_token, require_super
 from app.common import get_setting, mask_key
 from app.config import config
 from app.database import get_db
 from app.security import hash_password, verify_password
+from app.services.audit import audit
 
 router = APIRouter()
 __all__ = [
@@ -31,7 +32,7 @@ __all__ = [
 
 @router.get("/wecom", response_model=schemas.WecomOut)
 def get_wecom(
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     setting = get_setting(db)
@@ -47,7 +48,7 @@ def get_wecom(
 @router.put("/wecom", response_model=schemas.WecomOut)
 def update_wecom(
     payload: schemas.WecomUpdate,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     setting = get_setting(db)
@@ -63,6 +64,15 @@ def update_wecom(
         setting.wecom_system_prompt = payload.system_prompt
     db.commit()
     db.refresh(setting)
+    audit(
+        db,
+        admin,
+        action="wecom.update",
+        target_type="wecom",
+        target_id=0,
+        summary="更新企业微信集成配置",
+    )
+    db.commit()
     return schemas.WecomOut(
         wecom_corp_id=setting.wecom_corp_id,
         wecom_agent_id=setting.wecom_agent_id,
@@ -84,7 +94,7 @@ def _dingtalk_out(setting: models.Setting) -> schemas.DingtalkOut:
 
 @router.get("/dingtalk", response_model=schemas.DingtalkOut)
 def get_dingtalk(
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     return _dingtalk_out(get_setting(db))
@@ -93,7 +103,7 @@ def get_dingtalk(
 @router.put("/dingtalk", response_model=schemas.DingtalkOut)
 def update_dingtalk(
     payload: schemas.DingtalkUpdate,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     setting = get_setting(db)
@@ -109,6 +119,15 @@ def update_dingtalk(
         setting.dingtalk_system_prompt = payload.system_prompt
     db.commit()
     db.refresh(setting)
+    audit(
+        db,
+        admin,
+        action="dingtalk.update",
+        target_type="dingtalk",
+        target_id=0,
+        summary="更新钉钉集成配置",
+    )
+    db.commit()
     return _dingtalk_out(setting)
 
 
@@ -123,7 +142,7 @@ def _feishu_out(setting: models.Setting) -> schemas.FeishuOut:
 
 @router.get("/feishu", response_model=schemas.FeishuOut)
 def get_feishu(
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     return _feishu_out(get_setting(db))
@@ -132,7 +151,7 @@ def get_feishu(
 @router.put("/feishu", response_model=schemas.FeishuOut)
 def update_feishu(
     payload: schemas.FeishuUpdate,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     setting = get_setting(db)
@@ -146,4 +165,13 @@ def update_feishu(
         setting.feishu_system_prompt = payload.system_prompt
     db.commit()
     db.refresh(setting)
+    audit(
+        db,
+        admin,
+        action="feishu.update",
+        target_type="feishu",
+        target_id=0,
+        summary="更新飞书集成配置",
+    )
+    db.commit()
     return _feishu_out(setting)

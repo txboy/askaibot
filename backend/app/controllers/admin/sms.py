@@ -12,11 +12,12 @@ from app import models, schemas
 from app.services import mcp as mcp_core
 from app.services import skills as skill_core
 from app.services.kb import retrieve_kb
-from app.auth import create_admin_token, get_current_admin
+from app.auth import create_admin_token, require_super
 from app.common import get_setting, mask_key
 from app.config import config
 from app.database import get_db
 from app.security import hash_password, verify_password
+from app.services.audit import audit
 
 router = APIRouter()
 __all__ = ["get_sms", "update_sms"]
@@ -44,7 +45,7 @@ def _sms_out(setting: models.Setting) -> schemas.SmsOut:
 
 @router.get("/sms", response_model=schemas.SmsOut)
 def get_sms(
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     return _sms_out(get_setting(db))
@@ -52,7 +53,7 @@ def get_sms(
 @router.put("/sms", response_model=schemas.SmsOut)
 def update_sms(
     payload: schemas.SmsUpdate,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     setting = get_setting(db)
@@ -92,4 +93,13 @@ def update_sms(
         setting.aliyun_captcha_scene_id = payload.aliyun_scene_id
     db.commit()
     db.refresh(setting)
+    audit(
+        db,
+        admin,
+        action="sms.update",
+        target_type="sms",
+        target_id=0,
+        summary=f"更新短信接口配置 ({setting.sms_provider or '未配置'})",
+    )
+    db.commit()
     return _sms_out(setting)

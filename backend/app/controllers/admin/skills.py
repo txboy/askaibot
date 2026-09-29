@@ -12,12 +12,13 @@ from app import models, schemas
 from app.services import mcp as mcp_core
 from app.services import skills as skill_core
 from app.services.kb import retrieve_kb
-from app.auth import create_admin_token, get_current_admin
+from app.auth import create_admin_token, require_super
 from app.common import get_setting, mask_key
 from app.config import config
 from app.database import get_db
 from app.security import hash_password, verify_password
 from app.services import groups as groups_core
+from app.services.audit import audit
 
 router = APIRouter()
 __all__ = ["create_skill", "delete_skill", "list_skills", "test_skill", "update_skill"]
@@ -56,7 +57,7 @@ def _skill_out(skill: models.Skill, db: Session) -> schemas.SkillOut:
 
 @router.get("/skills", response_model=list[schemas.SkillOut])
 def list_skills(
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     return [_skill_out(s, db) for s in db.query(models.Skill).all()]
@@ -66,7 +67,7 @@ async def create_skill(
     file: UploadFile = File(...),
     scope: str = Form("global"),
     enabled: int = Form(1),
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     if scope not in ("global", "user"):
@@ -104,6 +105,15 @@ async def create_skill(
         skill.dir_path = final_dir
         db.commit()
         db.refresh(skill)
+        audit(
+            db,
+            admin,
+            action="skill.create",
+            target_type="skill",
+            target_id=skill.id,
+            summary=f"创建技能 {skill.name}",
+        )
+        db.commit()
         return _skill_out(skill, db)
     finally:
         if os.path.exists(tmp_zip):
@@ -120,7 +130,7 @@ async def create_skill(
 def update_skill(
     skill_id: int,
     payload: schemas.SkillUpdate,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     skill = db.get(models.Skill, skill_id)
@@ -148,17 +158,34 @@ def update_skill(
         groups_core.set_resource_grants(db, "skill", skill.id, payload.group_ids)
         db.commit()
         db.refresh(skill)
+    audit(
+        db,
+        admin,
+        action="skill.update",
+        target_type="skill",
+        target_id=skill.id,
+        summary=f"更新技能 {skill.name}",
+    )
+    db.commit()
     return _skill_out(skill, db)
 
 @router.delete("/skills/{skill_id}")
 def delete_skill(
     skill_id: int,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     skill = db.get(models.Skill, skill_id)
     if not skill:
         raise HTTPException(status_code=404, detail="技能不存在")
+    audit(
+        db,
+        admin,
+        action="skill.delete",
+        target_type="skill",
+        target_id=skill.id,
+        summary=f"删除技能 {skill.name}",
+    )
     if skill.dir_path:
         shutil.rmtree(skill.dir_path, ignore_errors=True)
     db.query(models.SkillAccess).filter(
@@ -173,7 +200,7 @@ def delete_skill(
 async def test_skill(
     skill_id: int,
     payload: schemas.SkillTestRequest,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     skill = db.get(models.Skill, skill_id)

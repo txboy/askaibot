@@ -12,11 +12,12 @@ from app import models, schemas
 from app.services import mcp as mcp_core
 from app.services import skills as skill_core
 from app.services.kb import retrieve_kb
-from app.auth import create_admin_token, get_current_admin
+from app.auth import create_admin_token, get_current_admin, require_super
 from app.common import get_setting, mask_key
 from app.config import config
 from app.database import get_db
 from app.security import hash_password, verify_password
+from app.services.audit import audit
 
 router = APIRouter()
 __all__ = [
@@ -52,7 +53,7 @@ _SECRET_HEADER_KEYS = {
 
 @router.get("/stats")
 def stats(
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     total_tokens = db.query(func.coalesce(func.sum(models.Message.tokens), 0)).scalar()
@@ -82,7 +83,7 @@ def stats(
 
 @router.get("/system", response_model=schemas.SystemOut)
 def get_system(
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     setting = get_setting(db)
@@ -102,7 +103,7 @@ def get_system(
 @router.put("/system", response_model=schemas.SystemOut)
 def update_system(
     payload: schemas.SystemUpdate,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     setting = get_setting(db)
@@ -118,6 +119,15 @@ def update_system(
         setting.system_prompt = payload.system_prompt
     db.commit()
     db.refresh(setting)
+    audit(
+        db,
+        admin,
+        action="system.update",
+        target_type="system",
+        target_id=0,
+        summary=f"更新系统设置 (title={setting.site_title})",
+    )
+    db.commit()
     return schemas.SystemOut(
         site_title=setting.site_title,
         theme=setting.theme,
@@ -133,7 +143,7 @@ def update_system(
 
 @router.get("/theme")
 def admin_get_theme(
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     return {"theme": get_setting(db).theme}
@@ -142,7 +152,7 @@ def admin_get_theme(
 @router.put("/theme")
 def admin_save_theme(
     payload: schemas.ThemeUpdate,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     setting = get_setting(db)
@@ -154,7 +164,7 @@ def admin_save_theme(
 
 @router.get("/debug")
 def admin_get_debug(
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     return {"debug_mode": bool(get_setting(db).debug_mode)}
@@ -163,7 +173,7 @@ def admin_get_debug(
 @router.put("/debug")
 def admin_save_debug(
     payload: schemas.DebugUpdate,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     setting = get_setting(db)
@@ -185,7 +195,7 @@ def admin_access(r: str = "", db: Session = Depends(get_db)):
 @router.post("/favicon")
 async def upload_favicon(
     file: UploadFile = File(...),
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     data = await file.read()
@@ -217,7 +227,7 @@ async def upload_favicon(
 
 @router.delete("/favicon")
 def delete_favicon(
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     setting = get_setting(db)
@@ -236,7 +246,7 @@ def delete_favicon(
 @router.post("/assistant-avatar")
 async def upload_assistant_avatar(
     file: UploadFile = File(...),
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     data = await file.read()
@@ -268,7 +278,7 @@ async def upload_assistant_avatar(
 
 @router.delete("/assistant-avatar")
 def delete_assistant_avatar(
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     setting = get_setting(db)
@@ -286,7 +296,7 @@ def delete_assistant_avatar(
 
 @router.get("/logo")
 def logo_status(
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     setting = get_setting(db)
@@ -296,7 +306,7 @@ def logo_status(
 @router.post("/logo")
 async def upload_logo(
     file: UploadFile = File(...),
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     data = await file.read()
@@ -328,7 +338,7 @@ async def upload_logo(
 
 @router.delete("/logo")
 def delete_logo(
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     setting = get_setting(db)
@@ -353,5 +363,13 @@ def change_password(
     if not verify_password(payload.old_password, admin.password_hash):
         raise HTTPException(status_code=400, detail="原密码错误")
     admin.password_hash = hash_password(payload.new_password)
+    audit(
+        db,
+        admin,
+        action="admin.password_change",
+        target_type="admin",
+        target_id=admin.id,
+        summary=f"修改密码 {admin.username}",
+    )
     db.commit()
     return {"ok": True}

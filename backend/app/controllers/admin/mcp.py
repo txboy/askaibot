@@ -12,12 +12,13 @@ from app import models, schemas
 from app.services import mcp as mcp_core
 from app.services import skills as skill_core
 from app.services.kb import retrieve_kb
-from app.auth import create_admin_token, get_current_admin
+from app.auth import create_admin_token, require_super
 from app.common import get_setting, mask_key
 from app.config import config
 from app.database import get_db
 from app.security import hash_password, verify_password
 from app.services import groups as groups_core
+from app.services.audit import audit
 
 router = APIRouter()
 __all__ = [
@@ -89,7 +90,7 @@ def _mcp_out(server: models.McpServer, db: Session) -> schemas.McpServerOut:
 
 @router.get("/mcp", response_model=list[schemas.McpServerOut])
 def list_mcp_servers(
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     return [_mcp_out(s, db) for s in db.query(models.McpServer).all()]
@@ -98,7 +99,7 @@ def list_mcp_servers(
 @router.post("/mcp", response_model=schemas.McpServerOut)
 def create_mcp_server(
     payload: schemas.McpServerCreate,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     server = models.McpServer(
@@ -117,6 +118,15 @@ def create_mcp_server(
     db.add(server)
     db.commit()
     db.refresh(server)
+    audit(
+        db,
+        admin,
+        action="mcp.create",
+        target_type="mcp",
+        target_id=server.id,
+        summary=f"创建 MCP 服务 {server.name}",
+    )
+    db.commit()
     return _mcp_out(server, db)
 
 
@@ -124,7 +134,7 @@ def create_mcp_server(
 def update_mcp_server(
     server_id: int,
     payload: schemas.McpServerUpdate,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     server = db.get(models.McpServer, server_id)
@@ -154,18 +164,35 @@ def update_mcp_server(
         db.commit()
         db.refresh(server)
     mcp_core.clear_cache(server.id)
+    audit(
+        db,
+        admin,
+        action="mcp.update",
+        target_type="mcp",
+        target_id=server.id,
+        summary=f"更新 MCP 服务 {server.name}",
+    )
+    db.commit()
     return _mcp_out(server, db)
 
 
 @router.delete("/mcp/{server_id}")
 def delete_mcp_server(
     server_id: int,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     server = db.get(models.McpServer, server_id)
     if not server:
         raise HTTPException(status_code=404, detail="MCP 服务不存在")
+    audit(
+        db,
+        admin,
+        action="mcp.delete",
+        target_type="mcp",
+        target_id=server.id,
+        summary=f"删除 MCP 服务 {server.name}",
+    )
     groups_core.set_resource_grants(db, "mcp", server.id, [])
     db.delete(server)
     db.commit()
@@ -176,7 +203,7 @@ def delete_mcp_server(
 @router.post("/mcp/{server_id}/test", response_model=list[schemas.McpToolOut])
 async def test_mcp_server(
     server_id: int,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     server = db.get(models.McpServer, server_id)
@@ -199,7 +226,7 @@ async def test_mcp_server(
 @router.post("/mcp/{server_id}/refresh", response_model=list[schemas.McpToolOut])
 async def refresh_mcp_server(
     server_id: int,
-    admin: models.Admin = Depends(get_current_admin),
+    admin: models.Admin = Depends(require_super),
     db: Session = Depends(get_db),
 ):
     server = db.get(models.McpServer, server_id)

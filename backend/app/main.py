@@ -152,6 +152,31 @@ def _ensure_columns() -> None:
         if "feishu_userid" not in ucols:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE users ADD COLUMN feishu_userid VARCHAR"))
+        if "agreed_agreement_ids" not in ucols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN agreed_agreement_ids VARCHAR DEFAULT ''"
+                    )
+                )
+        if "agreed_at" not in ucols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE users ADD COLUMN agreed_at DATETIME"))
+        if "department_id" not in ucols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE users ADD COLUMN department_id INTEGER"))
+    if "admins" in insp.get_table_names():
+        acols = {c["name"] for c in insp.get_columns("admins")}
+        if "role" not in acols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE admins ADD COLUMN role VARCHAR DEFAULT 'super'")
+                )
+        if "department_id" not in acols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE admins ADD COLUMN department_id INTEGER")
+                )
     if "messages" in insp.get_table_names():
         cols = {c["name"] for c in insp.get_columns("messages")}
         if "tokens" not in cols:
@@ -271,7 +296,11 @@ def _seed_admin() -> None:
 
         if not db.query(models.Admin).first():
             db.add(
-                models.Admin(username="admin", password_hash=hash_password("admin123"))
+                models.Admin(
+                    username="admin",
+                    password_hash=hash_password("admin123"),
+                    role="super",
+                )
             )
             db.commit()
     finally:
