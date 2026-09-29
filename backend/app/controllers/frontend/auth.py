@@ -1,6 +1,8 @@
+import logging
 import os
 from datetime import datetime, timedelta
 import random
+import sys
 import uuid
 from urllib.parse import quote
 
@@ -11,10 +13,22 @@ from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.services import captcha as captcha_mod
+from app.services import dingtalk_bot as dt_core
 from app.auth import create_token, get_current_user
 from app.common import get_setting
 from app.config import config
 from app.database import get_db
+
+logger = logging.getLogger("app.auth")
+if config.debug:
+    logger.setLevel(logging.DEBUG)
+    if not logger.handlers:
+        _handler = logging.StreamHandler(sys.stderr)
+        _handler.setLevel(logging.DEBUG)
+        _handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+        )
+        logger.addHandler(_handler)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -373,6 +387,15 @@ def _dingtalk_authorize_url(setting, state: str) -> str:
     )
 
 
+def _safe_json(data) -> str:
+    import json
+
+    try:
+        return json.dumps(data, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return repr(data)
+
+
 async def _dingtalk_user_token(client_id: str, client_secret: str, code: str) -> str:
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(
@@ -385,9 +408,25 @@ async def _dingtalk_user_token(client_id: str, client_secret: str, code: str) ->
                 "grantType": "authorization_code",
             },
         )
-        data = resp.json()
-    token = data.get("accessToken")
+        try:
+            data = resp.json()
+        except Exception:
+            logger.error(
+                "[dingtalk] userAccessToken 非JSON响应 status=%s text=%r",
+                resp.status_code,
+                resp.text[:500],
+            )
+            raise HTTPException(status_code=400, detail="钉钉登录失败：响应非 JSON")
+        logger.info(
+            "[dingtalk] userAccessToken status=%s 返回=%s",
+            resp.status_code,
+            _safe_json(data),
+        )
+    token = data.get("accessToken") if isinstance(data, dict) else None
     if not token:
+        logger.error(
+            "[dingtalk] userAccessToken 未返回 accessToken data=%s", _safe_json(data)
+        )
         raise HTTPException(
             status_code=400,
             detail=f"钉钉登录失败：{data.get('message', '未获取到 accessToken')}",
@@ -401,13 +440,64 @@ async def _dingtalk_user_info(access_token: str) -> dict:
             "https://api.dingtalk.com/v1.0/contact/users/me",
             headers={"x-acs-dingtalk-access-token": access_token},
         )
-        data = resp.json()
-    if not data.get("userId"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"钉钉用户信息获取失败：{data.get('message', '未获取到 userId')}",
+        try:
+            data = resp.json()
+        except Exception:
+            logger.error(
+                "[dingtalk] contact/users/me 非JSON响应 status=%s text=%r",
+                resp.status_code,
+                resp.text[:500],
+            )
+            raise HTTPException(
+                status_code=400, detail="钉钉用户信息获取失败：响应非 JSON"
+            )
+        logger.info(
+            "[dingtalk] contact/users/me status=%s 返回=%s",
+            resp.status_code,
+            _safe_json(data),
         )
+    if not isinstance(data, dict):
+        logger.error("[dingtalk] contact/users/me 返回非对象 data=%r", data)
+        raise HTTPException(status_code=400, detail=f"钉钉用户信息获取失败：{data}")
     return data
+
+
+async def _dingtalk_identity(
+    info: dict, app_key: str, app_secret: str
+) -> tuple[str, str]:
+    userid = info.get("userId") or info.get("userid") or ""
+    unionid = info.get("unionId") or info.get("unionid") or ""
+    openid = info.get("openId") or info.get("openid") or ""
+    # 优先使用已有 userId；否则尝试用 unionId 换算组织 userId（与钉钉机器人回调一致）
+    if not userid and unionid and app_key and app_secret:
+        try:
+            resolved = await dt_core.resolve_userid_by_unionid(
+                app_key, app_secret, unionid
+            )
+            if resolved:
+                userid = resolved
+                logger.info("[dingtalk] unionId->userId 换算成功 userid=%s", userid)
+        except Exception as exc:
+            logger.warning(
+                "[dingtalk] unionId->userId 换算失败，回退用 unionId: %s", exc
+            )
+    if not userid:
+        userid = unionid or openid
+    if not userid:
+        logger.error(
+            "[dingtalk] contact/users/me 无可用身份字段 data=%s", _safe_json(info)
+        )
+        raise HTTPException(
+            status_code=400, detail="钉钉用户信息获取失败：未获取到用户身份"
+        )
+    nickname = info.get("nick") or f"钉钉·{userid[-6:]}"
+    logger.info(
+        "[dingtalk] 身份匹配 userid=%s nickname=%s source=%s",
+        userid,
+        nickname,
+        _safe_json(info),
+    )
+    return userid, nickname
 
 
 @router.get("/dingtalk/qrcode")
@@ -440,6 +530,9 @@ def dingtalk_oauth(db: Session = Depends(get_db), state: str = ""):
 @router.get("/dingtalk/callback")
 async def dingtalk_callback(code: str, db: Session = Depends(get_db)):
     setting = get_setting(db)
+    logger.info(
+        "[dingtalk] callback 进入 code=%r real=%s", code, _dingtalk_is_real(setting)
+    )
     if _dingtalk_is_real(setting):
         try:
             atoken = await _dingtalk_user_token(
@@ -447,18 +540,22 @@ async def dingtalk_callback(code: str, db: Session = Depends(get_db)):
             )
             info = await _dingtalk_user_info(atoken)
         except HTTPException as exc:
+            logger.error("[dingtalk] callback 失败 detail=%r", exc.detail)
             return RedirectResponse(
                 f"{_dingtalk_base(setting)}/login?error={quote(str(exc.detail), safe='')}"
             )
-        userid = info.get("userId", "")
-        nickname = info.get("nick") or f"钉钉·{userid[-6:]}"
+        userid, nickname = await _dingtalk_identity(
+            info, setting.dingtalk_app_key, setting.dingtalk_app_secret
+        )
     else:
         if not setting.debug_mode:
             raise HTTPException(status_code=400, detail="未开启模拟登录")
         userid = f"mock-dd-{code}"
         nickname = "钉钉用户"
+        logger.info("[dingtalk] callback mock 模式 userid=%s", userid)
 
     if not userid:
+        logger.error("[dingtalk] callback 无 userid，跳转登录")
         return RedirectResponse(
             f"{_dingtalk_base(setting)}/login?error={quote('无法识别钉钉身份', safe='')}"
         )
@@ -468,6 +565,9 @@ async def dingtalk_callback(code: str, db: Session = Depends(get_db)):
         db.add(user)
         db.commit()
         db.refresh(user)
+        logger.info("[dingtalk] callback 新建用户 userid=%s", userid)
+    else:
+        logger.info("[dingtalk] callback 复用用户 userid=%s", userid)
 
     token = create_token(user.id)
     return RedirectResponse(f"{_dingtalk_base(setting)}/login?token={token}")
@@ -478,18 +578,25 @@ async def dingtalk_free_login(
     payload: schemas.DingtalkCodeRequest, db: Session = Depends(get_db)
 ):
     setting = get_setting(db)
+    logger.info(
+        "[dingtalk] free-login 进入 code=%r real=%s",
+        payload.code,
+        _dingtalk_is_real(setting),
+    )
     if _dingtalk_is_real(setting):
         atoken = await _dingtalk_user_token(
             setting.dingtalk_app_key, setting.dingtalk_app_secret, payload.code
         )
         info = await _dingtalk_user_info(atoken)
-        userid = info.get("userId", "")
-        nickname = info.get("nick") or f"钉钉·{userid[-6:]}"
+        userid, nickname = await _dingtalk_identity(
+            info, setting.dingtalk_app_key, setting.dingtalk_app_secret
+        )
     else:
         if not setting.debug_mode:
             raise HTTPException(status_code=400, detail="未开启模拟登录")
         userid = f"mock-dd-{payload.code}"
         nickname = "钉钉用户"
+        logger.info("[dingtalk] free-login mock 模式 userid=%s", userid)
 
     user = db.query(models.User).filter(models.User.dingtalk_userid == userid).first()
     if not user:
@@ -497,6 +604,9 @@ async def dingtalk_free_login(
         db.add(user)
         db.commit()
         db.refresh(user)
+        logger.info("[dingtalk] free-login 新建用户 userid=%s", userid)
+    else:
+        logger.info("[dingtalk] free-login 复用用户 userid=%s", userid)
     return schemas.TokenResponse(token=create_token(user.id), user=user)
 
 

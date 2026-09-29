@@ -46,9 +46,7 @@ def encrypt_msg(plaintext: str, aes_key: str, receive_id: str) -> bytes:
     return AES.new(key, AES.MODE_CBC, iv).encrypt(padded)
 
 
-def decrypt_msg(
-    encrypted: bytes, aes_key: str, receive_id: str, check_receive_id: bool = True
-) -> str:
+def _decrypt_raw(encrypted: bytes, aes_key: str) -> tuple[str, str]:
     key = _aes_key(aes_key)
     iv = key[:16]
     data = AES.new(key, AES.MODE_CBC, iv).decrypt(encrypted)
@@ -56,6 +54,23 @@ def decrypt_msg(
     msg_len = struct.unpack(">I", data[16:20])[0]
     msg = data[20 : 20 + msg_len].decode("utf-8")
     rid = data[20 + msg_len :].decode("utf-8")
+    return msg, rid
+
+
+def decrypt_msg(
+    encrypted: bytes, aes_key: str, receive_id: str, check_receive_id: bool = True
+) -> str:
+    msg, rid = _decrypt_raw(encrypted, aes_key)
     if check_receive_id and rid != receive_id:
         raise WeComCryptoError("receive_id mismatch")
     return msg
+
+
+def decrypt_msg_with_rid(
+    encrypted: bytes, aes_key: str, check_receive_id: bool = True, receive_id: str = ""
+) -> tuple[str, str]:
+    """解密并返回 (明文, receive_id)。"""
+    msg, rid = _decrypt_raw(encrypted, aes_key)
+    if check_receive_id and rid != receive_id:
+        raise WeComCryptoError("receive_id mismatch")
+    return msg, rid

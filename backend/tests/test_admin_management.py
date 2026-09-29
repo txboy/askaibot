@@ -24,11 +24,19 @@ def test_endpoints_usage_sums_tokens_by_endpoint():
     ep = models.ApiEndpoint(id=1, name="A", base_url="https://a", enabled=1)
     other = models.ApiEndpoint(id=2, name="B", base_url="https://b", enabled=1)
     msg1 = models.Message(
-        conversation_id=1, role="assistant", content="x", tokens=5, endpoint_id=1,
+        conversation_id=1,
+        role="assistant",
+        content="x",
+        tokens=5,
+        endpoint_id=1,
         created_at=datetime.now(),
     )
     msg2 = models.Message(
-        conversation_id=1, role="assistant", content="y", tokens=7, endpoint_id=1,
+        conversation_id=1,
+        role="assistant",
+        content="y",
+        tokens=7,
+        endpoint_id=1,
         created_at=datetime.now(),
     )
     db.add_all([ep, other, msg1, msg2])
@@ -44,18 +52,25 @@ def test_endpoints_usage_sums_tokens_by_endpoint():
 def test_list_users_with_token_stats():
     db = _db()
     u = models.User(id=1, nickname="张三", phone="13800000000")
+    dt = models.User(id=2, nickname="李四", dingtalk_userid="dt_1")
     conv = models.Conversation(id=1, user_id=1, title="c")
     msg = models.Message(
-        conversation_id=1, role="assistant", content="x", tokens=9,
+        conversation_id=1,
+        role="assistant",
+        content="x",
+        tokens=9,
         created_at=datetime.now(),
     )
-    db.add_all([u, conv, msg])
+    db.add_all([u, dt, conv, msg])
     db.commit()
     rows = admin_mod.list_users(admin=None, db=db)
-    assert rows[0].nickname == "张三"
-    assert rows[0].conversation_count == 1
-    assert rows[0].total_tokens == 9
-    assert rows[0].today_tokens == 9
+    by_id = {r.id: r for r in rows}
+    assert by_id[1].nickname == "张三"
+    assert by_id[1].conversation_count == 1
+    assert by_id[1].total_tokens == 9
+    assert by_id[1].today_tokens == 9
+    assert by_id[1].platform == "phone"
+    assert by_id[2].platform == "dingtalk"
     db.close()
 
 

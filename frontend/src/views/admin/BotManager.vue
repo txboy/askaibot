@@ -335,64 +335,68 @@ onMounted(loadBots)
     </details>
 
     <div v-if="editingBot" class="modal-mask">
-      <div class="modal">
+      <div class="modal modal-wide">
         <h3>{{ editingBot.id ? '编辑机器人' : '添加机器人' }}</h3>
-        <label>名称<input v-model="editingBot.name" class="input" placeholder="如 客服机器人" /></label>
-        <div class="form-2">
-          <label>{{ botIsDingtalk ? 'AppKey' : botIsFeishu ? 'AppID' : 'CorpID' }}<input v-model="editingBot.corp_id" class="input" :placeholder="botIsDingtalk ? '钉钉应用 AppKey' : botIsFeishu ? '飞书应用 AppID' : '留空使用企微设置中的 CorpID'" /></label>
-          <label>{{ botIsDingtalk ? 'AppSecret' : botIsFeishu ? 'AppSecret' : '应用 Secret' }}<input v-model="editingBot.secret" type="password" class="input" :placeholder="editingBot.id ? '留空不修改' : (botIsDingtalk ? '钉钉应用 AppSecret' : botIsFeishu ? '飞书应用 AppSecret' : '应用 Secret')" /></label>
-          <label v-if="!botIsFeishu">AgentId<input v-model="editingBot.agent_id" class="input" :placeholder="botIsDingtalk ? '钉钉应用 AgentId' : '应用 AgentId'" /></label>
-          <label>{{ botIsDingtalk || botIsFeishu ? 'URL 验证 Token' : 'Token' }}<input v-model="editingBot.token" type="password" class="input" :placeholder="editingBot.id ? (editingBot.token_masked || '已设置（留空不修改）') : (botIsFeishu ? '校验 Token（选填）' : '回调 Token')" /></label>
-          <label>{{ botIsFeishu ? 'EncryptKey' : botIsDingtalk ? 'EncodingAESKey' : 'EncodingAESKey' }}<input v-model="editingBot.aes_key" type="password" class="input" :placeholder="editingBot.id ? '已设置（留空不修改）' : (botIsFeishu ? 'Encrypt Key（选填）' : 'EncodingAESKey')" /></label>
-        </div>
-        <label>接口
-          <select v-model="editingBot.endpoint_id" class="input">
-            <option :value="null">默认接口</option>
-            <option v-for="e in endpoints" :key="e.id" :value="e.id">{{ e.name }}</option>
-          </select>
-        </label>
-        <label>模型
-          <select v-model="editingBot.model" class="input">
-            <option value="">自动（接口默认）</option>
-            <option v-for="m in botModelOptions" :key="m" :value="m">{{ m }}</option>
-          </select>
-        </label>
-        <label>系统提示词<textarea v-model="editingBot.system_prompt" class="input" rows="4" placeholder="该机器人的系统提示词，优先级最高。留空则使用 基础配置/模型接口/通用 的提示词。"></textarea></label>
-        <div class="form-2">
-          <label>知识库
-            <div class="kb-checkbox-list">
-              <label v-for="kb in kbs" :key="kb.id" class="check">
-                <input type="checkbox" :value="kb.id" :checked="editingBot.kb_ids.includes(kb.id)" @change="toggleBotKb(kb.id)" />
-                {{ kb.name }}
-              </label>
-              <span v-if="!kbs.length" class="hint">暂无知识库</span>
+        <div class="bot-cols">
+          <div class="bot-col">
+            <label>名称<input v-model="editingBot.name" class="input" placeholder="如 客服机器人" /></label>
+            <div class="form-2">
+              <label>{{ botIsDingtalk ? 'AppKey' : botIsFeishu ? 'AppID' : 'CorpID' }}<input v-model="editingBot.corp_id" class="input" :placeholder="botIsDingtalk ? '钉钉应用 AppKey' : botIsFeishu ? '飞书应用 AppID' : '留空使用企微设置中的 CorpID'" /></label>
+              <label>{{ botIsDingtalk ? 'AppSecret' : botIsFeishu ? 'AppSecret' : '应用 Secret' }}<input v-model="editingBot.secret" type="password" class="input" :placeholder="editingBot.id ? '留空不修改' : (botIsDingtalk ? '钉钉应用 AppSecret' : botIsFeishu ? '飞书应用 AppSecret' : '应用 Secret')" /></label>
+              <label v-if="!botIsFeishu">AgentId<input v-model="editingBot.agent_id" class="input" :placeholder="botIsDingtalk ? '钉钉应用 AgentId' : '应用 AgentId'" /></label>
+              <label>{{ botIsDingtalk || botIsFeishu ? 'URL 验证 Token' : 'Token' }}<input v-model="editingBot.token" type="password" class="input" :placeholder="editingBot.id ? (editingBot.token_masked || '已设置（留空不修改）') : (botIsFeishu ? '校验 Token（选填）' : '回调 Token')" /></label>
+              <label>{{ botIsFeishu ? 'EncryptKey' : 'EncodingAESKey' }}<input v-model="editingBot.aes_key" type="password" class="input" :placeholder="editingBot.id ? '已设置（留空不修改）' : (botIsFeishu ? 'Encrypt Key（选填）' : 'EncodingAESKey')" /></label>
             </div>
-          </label>
-          <label class="check" style="margin-top: 10px"><input type="checkbox" v-model="editingBot.web_search" :true-value="1" :false-value="0" /> 启用联网搜索</label>
+            <label>接口
+              <select v-model="editingBot.endpoint_id" class="input">
+                <option :value="null">默认接口</option>
+                <option v-for="e in endpoints" :key="e.id" :value="e.id">{{ e.name }}</option>
+              </select>
+            </label>
+            <label>模型
+              <select v-model="editingBot.model" class="input">
+                <option value="">自动（接口默认）</option>
+                <option v-for="m in botModelOptions" :key="m" :value="m">{{ m }}</option>
+              </select>
+            </label>
+            <label class="check"><input type="checkbox" v-model="editingBot.enabled" :true-value="1" :false-value="0" /> 启用</label>
+            <p v-if="editingBot.id" class="hint" style="margin-top: 8px">
+              回调地址：<code>{{ editingBot.callback_url }}</code>
+            </p>
+            <p v-if="!editingBot.id" class="hint" style="margin-top: 8px">保存后可在此查看回调地址，填入{{ botIsDingtalk ? '钉钉' : botIsFeishu ? '飞书' : '企微' }}后台。</p>
+          </div>
+          <div class="bot-col">
+            <label>系统提示词<textarea v-model="editingBot.system_prompt" class="input" rows="4" placeholder="该机器人的系统提示词，优先级最高。留空则使用 基础配置/模型接口/通用 的提示词。"></textarea></label>
+            <label>知识库
+              <div class="kb-checkbox-list">
+                <label v-for="kb in kbs" :key="kb.id" class="check">
+                  <input type="checkbox" :value="kb.id" :checked="editingBot.kb_ids.includes(kb.id)" @change="toggleBotKb(kb.id)" />
+                  {{ kb.name }}
+                </label>
+                <span v-if="!kbs.length" class="hint">暂无知识库</span>
+              </div>
+            </label>
+            <label class="check"><input type="checkbox" v-model="editingBot.web_search" :true-value="1" :false-value="0" /> 启用联网搜索</label>
+            <label>MCP 工具（大模型选用）
+              <div class="kb-checkbox-list">
+                <label v-for="m in mcps" :key="m.id" class="check">
+                  <input type="checkbox" :value="m.id" :checked="editingBot.mcp_ids.includes(m.id)" @change="toggleBotMcp(m.id)" />
+                  {{ m.name }}
+                </label>
+                <span v-if="!mcps.length" class="hint">暂无 MCP 服务</span>
+              </div>
+            </label>
+            <label>技能包（大模型选用）
+              <div class="kb-checkbox-list">
+                <label v-for="sk in skills" :key="sk.id" class="check">
+                  <input type="checkbox" :value="sk.id" :checked="editingBot.skill_ids.includes(sk.id)" @change="toggleBotSkill(sk.id)" />
+                  {{ sk.name }}
+                </label>
+                <span v-if="!skills.length" class="hint">暂无技能包</span>
+              </div>
+            </label>
+          </div>
         </div>
-        <label>MCP 工具（大模型选用）
-          <div class="kb-checkbox-list">
-            <label v-for="m in mcps" :key="m.id" class="check">
-              <input type="checkbox" :value="m.id" :checked="editingBot.mcp_ids.includes(m.id)" @change="toggleBotMcp(m.id)" />
-              {{ m.name }}
-            </label>
-            <span v-if="!mcps.length" class="hint">暂无 MCP 服务</span>
-          </div>
-        </label>
-        <label>技能包（大模型选用）
-          <div class="kb-checkbox-list">
-            <label v-for="sk in skills" :key="sk.id" class="check">
-              <input type="checkbox" :value="sk.id" :checked="editingBot.skill_ids.includes(sk.id)" @change="toggleBotSkill(sk.id)" />
-              {{ sk.name }}
-            </label>
-            <span v-if="!skills.length" class="hint">暂无技能包</span>
-          </div>
-        </label>
-        <label class="check"><input type="checkbox" v-model="editingBot.enabled" :true-value="1" :false-value="0" /> 启用</label>
-        <p v-if="editingBot.id" class="hint" style="margin-top: 8px">
-          回调地址：<code>{{ editingBot.callback_url }}</code>
-        </p>
-        <p v-if="!editingBot.id" class="hint" style="margin-top: 8px">保存后可在此查看回调地址，填入{{ botIsDingtalk ? '钉钉' : botIsFeishu ? '飞书' : '企微' }}后台。</p>
         <div class="foot">
           <button class="btn btn-outline" @click="editingBot = null">取消</button>
           <button class="btn" :disabled="savingBot" @click="saveBot">{{ savingBot ? '保存中…' : '保存' }}</button>
@@ -467,5 +471,32 @@ onMounted(loadBots)
   margin-left: 6px;
   padding: 2px 8px;
   font-size: 12px;
+}
+
+.modal-wide {
+  width: 760px;
+  max-width: 94vw;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.bot-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 16px;
+}
+
+.bot-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .bot-cols {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

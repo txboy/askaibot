@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 
 import pytest
 from sqlalchemy import create_engine
@@ -100,6 +101,24 @@ def test_verify_returns_echostr(db):
     )
     assert resp.status_code == 200
     assert resp.body == plain.encode()
+
+
+def test_verify_bare_get_returns_success(db):
+    """钉钉调试按钮发起的裸 GET（无签名/echostr 参数）应返回 200 success。"""
+    db.add(_bot())
+    db.commit()
+
+    resp = dt_router.verify(
+        bot_id=1,
+        signature="",
+        msg_signature="",
+        timestamp="",
+        nonce="",
+        echostr="",
+        db=db,
+    )
+    assert resp.status_code == 200
+    assert resp.body == b"success"
 
 
 def test_verify_bad_signature_raises(db):
@@ -247,6 +266,100 @@ def test_receive_bad_signature_raises(db):
                 db=db,
             )
         )
+
+
+def test_receive_check_url_returns_encrypted_success(db):
+    db.add(_bot())
+    db.commit()
+    echo = '{"EventType":"check_url"}'
+    enc_str = _encrypt(echo)
+    sig = wc.signature("token", "123", "nonce", enc_str)
+    body = json_bytes({"encrypt": enc_str})
+
+    class FakeRequest:
+        async def body(self):
+            return body
+
+    async def run():
+        return await dt_router.receive(
+            bot_id=1,
+            request=FakeRequest(),
+            signature=sig,
+            timestamp="123",
+            nonce="nonce",
+            db=db,
+        )
+
+    resp = asyncio.run(run())
+    assert resp.status_code == 200
+    assert resp.media_type == "application/json"
+    payload = json.loads(resp.body)
+    assert set(payload) == {"msg_signature", "timeStamp", "nonce", "encrypt"}
+    assert payload["timeStamp"] == "123"
+    assert payload["nonce"] == "nonce"
+    assert payload["msg_signature"] == wc.signature(
+        "token", "123", "nonce", payload["encrypt"]
+    )
+    plain = wc.decrypt_msg(
+        base64.b64decode(payload["encrypt"]), AES_KEY, "", check_receive_id=False
+    )
+    assert plain == "success"
+
+
+def test_receive_non_message_returns_success(db):
+    db.add(_bot())
+    db.commit()
+    echo = "owner-verify-string"
+    enc_str = _encrypt(echo)
+    sig = wc.signature("token", "123", "nonce", enc_str)
+    body = json_bytes({"encrypt": enc_str})
+
+    class FakeRequest:
+        async def body(self):
+            return body
+
+    async def run():
+        return await dt_router.receive(
+            bot_id=1,
+            request=FakeRequest(),
+            signature=sig,
+            timestamp="123",
+            nonce="nonce",
+            db=db,
+        )
+
+    resp = asyncio.run(run())
+    assert resp.status_code == 200
+    assert resp.body == b"success"
+
+
+def test_parse_json_message():
+    payload = json.dumps(
+        {
+            "msgtype": "text",
+            "text": {"content": "你好，钉钉"},
+            "senderStaffId": "user001",
+            "senderNick": "张三",
+            "robotCode": "ding-app-key",
+        }
+    )
+    msg = dt_router._parse_message(payload)
+    assert msg["FromUserName"] == "user001"
+    assert msg["MsgType"] == "text"
+    assert msg["Content"] == "你好，钉钉"
+    assert msg["ToUserName"] == "ding-app-key"
+
+
+def test_parse_xml_message():
+    xml = "<xml><FromUserName>w001</FromUserName><MsgType>text</MsgType><Content>hi</Content></xml>"
+    msg = dt_router._parse_message(xml)
+    assert msg["FromUserName"] == "w001"
+    assert msg["Content"] == "hi"
+
+
+def test_parse_message_non_parseable_raises():
+    with pytest.raises(Exception):
+        dt_router._parse_message("not xml not json")
 
 
 def test_get_access_token_caches(monkeypatch):

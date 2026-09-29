@@ -40,6 +40,17 @@ function fmtDate(s) {
   return String(s).replace('T', ' ').slice(0, 16)
 }
 
+const PLATFORM_NAMES = {
+  wecom: '企业微信',
+  dingtalk: '钉钉',
+  feishu: '飞书',
+  phone: '手机号',
+}
+
+function platformName(p) {
+  return PLATFORM_NAMES[p] || '—'
+}
+
 onMounted(loadUsers)
 </script>
 
@@ -55,6 +66,7 @@ onMounted(loadUsers)
       <thead>
         <tr>
           <th>昵称</th>
+          <th>平台</th>
           <th>手机号</th>
           <th>会话数</th>
           <th>总 Token</th>
@@ -67,6 +79,7 @@ onMounted(loadUsers)
       <tbody>
         <tr v-for="u in users" :key="u.id">
           <td>{{ u.nickname }}</td>
+          <td>{{ platformName(u.platform) }}</td>
           <td>{{ u.phone || '—' }}</td>
           <td>{{ u.conversation_count }}</td>
           <td>{{ u.total_tokens }}</td>
@@ -78,7 +91,7 @@ onMounted(loadUsers)
           </td>
         </tr>
         <tr v-if="!users.length">
-          <td colspan="8" class="empty">暂无用户</td>
+          <td colspan="9" class="empty">暂无用户</td>
         </tr>
       </tbody>
     </table>

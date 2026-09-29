@@ -88,11 +88,50 @@ def test_user_info_parses_user_id(monkeypatch):
     assert kwargs["headers"]["x-acs-dingtalk-access-token"] == "AT"
 
 
-def test_user_info_missing_user_id_raises(monkeypatch):
-    fake = FakeHttp(FakeResp({"message": "no user"}))
+def test_user_info_returns_dict_without_user_id(monkeypatch):
+    fake = FakeHttp(FakeResp({"nick": "张三", "unionId": "uni-1", "openId": "open-1"}))
     monkeypatch.setattr(auth_mod.httpx, "AsyncClient", lambda *a, **k: fake)
+    info = asyncio.run(auth_mod._dingtalk_user_info("AT"))
+    assert info["unionId"] == "uni-1"
+
+
+def test_identity_prefers_user_id_then_union_id_then_open_id(monkeypatch):
+    assert asyncio.run(
+        auth_mod._dingtalk_identity({"userId": "u1", "nick": "张三"}, "", "")
+    ) == ("u1", "张三")
+    assert asyncio.run(
+        auth_mod._dingtalk_identity({"unionId": "uni", "nick": "李四"}, "", "")
+    ) == ("uni", "李四")
+    assert asyncio.run(auth_mod._dingtalk_identity({"openId": "op"}, "", "")) == (
+        "op",
+        "钉钉·op",
+    )
+
+
+def test_identity_converts_union_id_to_user_id(monkeypatch):
+    async def fake_resolve(app_key, app_secret, unionid):
+        assert unionid == "uni"
+        return "org-user"
+
+    monkeypatch.setattr(auth_mod.dt_core, "resolve_userid_by_unionid", fake_resolve)
+    assert asyncio.run(
+        auth_mod._dingtalk_identity({"unionId": "uni", "nick": "李四"}, "ak", "as")
+    ) == ("org-user", "李四")
+
+
+def test_identity_falls_back_to_union_id_on_convert_failure(monkeypatch):
+    async def fake_resolve(app_key, app_secret, unionid):
+        raise RuntimeError("无权限")
+
+    monkeypatch.setattr(auth_mod.dt_core, "resolve_userid_by_unionid", fake_resolve)
+    assert asyncio.run(
+        auth_mod._dingtalk_identity({"unionId": "uni", "nick": "李四"}, "ak", "as")
+    ) == ("uni", "李四")
+
+
+def test_identity_missing_all_raises():
     with pytest_raises_http():
-        asyncio.run(auth_mod._dingtalk_user_info("AT"))
+        asyncio.run(auth_mod._dingtalk_identity({"nick": "无身份"}, "", ""))
 
 
 def test_qrcode_real_mode(monkeypatch):

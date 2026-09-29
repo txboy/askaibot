@@ -442,6 +442,7 @@ class AdminUserOut(BaseModel):
     id: int
     nickname: str
     phone: Optional[str] = None
+    platform: str = ""
     created_at: datetime
     conversation_count: int
     last_active: Optional[datetime] = None

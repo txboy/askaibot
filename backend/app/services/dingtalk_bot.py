@@ -30,6 +30,26 @@ async def get_access_token(app_key: str, app_secret: str) -> str:
     return token
 
 
+async def resolve_userid_by_unionid(app_key: str, app_secret: str, unionid: str) -> str:
+    """通过 unionId 获取组织内 userId（需服务端 corp access_token + 通讯录读权限）。"""
+    token = await get_access_token(app_key, app_secret)
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            "https://oapi.dingtalk.com/topapi/v2/user/getbyunionid",
+            params={"access_token": token},
+            json={"unionid": unionid},
+        )
+        data = resp.json()
+    if data.get("errcode") != 0:
+        raise RuntimeError(
+            f"通过 unionId 获取 userId 失败：errcode={data.get('errcode')} errmsg={data.get('errmsg')}"
+        )
+    userid = (data.get("result") or {}).get("userid")
+    if not userid:
+        raise RuntimeError(f"通过 unionId 获取 userId 失败：result 为空 {data}")
+    return userid
+
+
 async def send_text(
     userid: str, content: str, agent_id: str, app_key: str, app_secret: str
 ) -> None:

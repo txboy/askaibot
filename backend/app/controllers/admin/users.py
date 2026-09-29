@@ -21,6 +21,19 @@ from app.security import hash_password, verify_password
 router = APIRouter()
 __all__ = ["delete_user", "list_users"]
 
+
+def _platform(u: models.User) -> str:
+    if u.feishu_userid:
+        return "feishu"
+    if u.dingtalk_userid:
+        return "dingtalk"
+    if u.wecom_userid:
+        return "wecom"
+    if u.phone:
+        return "phone"
+    return ""
+
+
 def _user_out(db: Session, u: models.User) -> schemas.AdminUserOut:
     today_start = datetime.combine(datetime.now().date(), time.min)
     conv_count = (
@@ -51,12 +64,14 @@ def _user_out(db: Session, u: models.User) -> schemas.AdminUserOut:
         id=u.id,
         nickname=u.nickname,
         phone=u.phone,
+        platform=_platform(u),
         created_at=u.created_at,
         conversation_count=conv_count,
         last_active=last_active,
         total_tokens=total,
         today_tokens=today,
     )
+
 
 @router.get("/users", response_model=list[schemas.AdminUserOut])
 def list_users(
@@ -65,6 +80,7 @@ def list_users(
 ):
     users = db.query(models.User).order_by(models.User.created_at.desc()).all()
     return [_user_out(db, u) for u in users]
+
 
 @router.delete("/users/{user_id}")
 def delete_user(
