@@ -36,7 +36,7 @@ tools:
 ## 部署/配置改动
 
 1. **`docker/Dockerfile.skill-runner`**（新）：基于 `python:3.12-slim` + 安装 node；构建为 `askai-skill-runner` 镜像。
-2. **`docker/Dockerfile.backend`**：安装 docker CLI（供沙箱调用）。
+2. **`docker/Dockerfile.backend`**：无需安装 docker CLI（后台通过 Python `docker` SDK 调宿主 Docker，见 `requirements.txt` 的 `docker` 依赖）。
 3. **`docker/docker-compose.yml`**：backend 挂载 `/var/run/docker.sock`（读写）；新增 `skill-runner` 镜像 build；注入环境变量。
 4. **`app/config.py`**：`skill_sandbox`(默认 auto)、`skill_runner_image`(默认 askai-skill-runner)、`skill_data_volume`(默认 app_data)、`skill_data_mount`(默认 /app/data)、资源上限常量。
 

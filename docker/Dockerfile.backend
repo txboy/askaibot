@@ -5,12 +5,7 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# 供沙箱执行技能代码调用宿主 docker（挂载 docker.sock）
-RUN printf '#!/bin/sh\nexit 0\n' > /usr/sbin/policy-rc.d \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends docker.io \
-    && rm -rf /var/lib/apt/lists/*
-
+# 供沙箱执行技能代码调用宿主 docker（挂载 docker.sock）—— 通过 Python docker SDK，无需安装 docker CLI
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

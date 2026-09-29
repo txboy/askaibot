@@ -542,7 +542,7 @@ async def _feishu_user_token(app_id: str, app_secret: str, code: str) -> dict:
             status_code=400,
             detail=(f"飞书登录失败：code={data.get('code')} msg={data.get('msg')}"),
         )
-    return data
+    return data.get("data") or {}
 
 
 async def _feishu_user_info(access_token: str) -> dict:

@@ -28,11 +28,11 @@ async function loadEndpoints() {
 }
 
 function openCreate() {
-  editing.value = { name: '', base_url: '', api_key: '', models: '', enabled: 1, is_default: 0, scope: 'global', group_ids: [] }
+  editing.value = { name: '', base_url: '', api_key: '', models: '', enabled: 1, is_default: 0, scope: 'global', system_prompt: '', group_ids: [] }
 }
 
 function openEdit(e) {
-  editing.value = { id: e.id, name: e.name, base_url: e.base_url, api_key: '', models: e.models, enabled: e.enabled, is_default: e.is_default, scope: e.scope || 'global', group_ids: (e.group_ids || []).slice() }
+  editing.value = { id: e.id, name: e.name, base_url: e.base_url, api_key: '', models: e.models, enabled: e.enabled, is_default: e.is_default, scope: e.scope || 'global', system_prompt: e.system_prompt || '', group_ids: (e.group_ids || []).slice() }
 }
 
 async function save() {
@@ -42,7 +42,7 @@ async function save() {
   errorMsg.value = ''
   try {
     if (f.id) {
-      const body = { name: f.name, base_url: f.base_url, models: f.models, enabled: f.enabled, is_default: f.is_default, scope: f.scope, group_ids: f.scope === 'group' ? f.group_ids : [] }
+      const body = { name: f.name, base_url: f.base_url, models: f.models, enabled: f.enabled, is_default: f.is_default, scope: f.scope, system_prompt: f.system_prompt, group_ids: f.scope === 'group' ? f.group_ids : [] }
       if (f.api_key) body.api_key = f.api_key
       await api.adminUpdateEndpoint(f.id, body)
     } else {
@@ -54,6 +54,7 @@ async function save() {
         enabled: f.enabled,
         is_default: f.is_default,
         scope: f.scope,
+        system_prompt: f.system_prompt,
       })
     }
     editing.value = null
@@ -116,6 +117,7 @@ onMounted(loadEndpoints)
         <label>base_url<input v-model="editing.base_url" class="input" placeholder="https://api.openai.com/v1" /></label>
         <label>API Key<input v-model="editing.api_key" type="password" class="input" :placeholder="editing.id ? '留空则不修改' : '请输入 API Key'" /></label>
         <label>模型列表（逗号分隔）<textarea v-model="editing.models" class="input" rows="2" placeholder="gpt-4o, gpt-4o-mini"></textarea></label>
+        <label>系统提示词<textarea v-model="editing.system_prompt" class="input" rows="4" placeholder="该接口（模型）默认提示词；优先级：机器人 &gt; 基础配置 &gt; 本接口 &gt; 通用。"></textarea></label>
         <label class="check"><input type="checkbox" v-model="editing.enabled" :true-value="1" :false-value="0" /> 启用</label>
         <label class="check"><input type="checkbox" v-model="editing.is_default" :true-value="1" :false-value="0" /> 设为默认接口</label>
         <UserScopeControl v-model:scope="editing.scope" v-model:groups="editing.group_ids" />

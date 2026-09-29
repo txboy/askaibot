@@ -1,17 +1,36 @@
 """企微智能机器人：access_token、主动发送、媒体下载与基于机器人配置的回复生成。"""
 
 import json
+import logging
+import sys
 import time
 
 import httpx
 from sqlalchemy.orm import Session
 
+from app.config import config
 from app.services import mcp as mcp_core
 from app.services import skills as skill_core
 from app import models
-from app.common import build_content_parts, get_setting, parse_models
+from app.common import (
+    build_content_parts,
+    get_setting,
+    parse_models,
+    resolve_system_prompt,
+)
 from app.services.kb import build_openai_tools, format_kb_context, retrieve_kb
-from app.services.search import format_results, search_web
+from app.services.search import build_web_search_tool, format_results, search_web
+
+logger = logging.getLogger("app.wecom_bot")
+if config.debug:
+    logger.setLevel(logging.DEBUG)
+    if not logger.handlers:
+        _handler = logging.StreamHandler(sys.stderr)
+        _handler.setLevel(logging.DEBUG)
+        _handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+        )
+        logger.addHandler(_handler)
 
 _token_cache: dict[str, tuple[str, float]] = {}
 
@@ -87,34 +106,6 @@ def _resolve_endpoint(db: Session, bot: models.WecomBot) -> models.ApiEndpoint:
     return ep
 
 
-def _last_user_text(messages: list[models.Message]) -> str:
-    for m in reversed(messages):
-        if m.role == "user":
-            return m.content
-    return ""
-
-
-async def build_context(db: Session, bot: models.WecomBot, query: str) -> str:
-    parts: list[str] = []
-    if bot.web_search:
-        setting = get_setting(db)
-        provider = setting.search_provider
-        if provider:
-            try:
-                results = await search_web(
-                    provider,
-                    setting.search_api_key,
-                    setting.search_base_url,
-                    query,
-                )
-            except Exception:
-                results = []
-            txt = format_results(results)
-            if txt:
-                parts.append("请参考以下联网搜索结果：\n" + txt)
-    return "\n\n".join(parts)
-
-
 def _bot_kbs(db: Session, bot: models.WecomBot) -> list[models.KnowledgeBase]:
     ids = parse_kb_ids(bot.kb_ids)
     if not ids:
@@ -166,10 +157,6 @@ async def generate_reply(
         else:
             messages.append({"role": m.role, "content": m.content})
 
-    context = await build_context(db, bot, _last_user_text(history))
-    if context:
-        messages = [{"role": "system", "content": context}] + messages
-
     # 机器人单独配置的 MCP 工具（默认由大模型选用）
     mcp_servers = mcp_core.resolve_servers(db, mcp_core.parse_ids(bot.mcp_ids))
     mcp_tools, mcp_mapping = await mcp_core.build_openai_tools(mcp_servers)
@@ -182,11 +169,32 @@ async def generate_reply(
     bot_kbs = _bot_kbs(db, bot)
     kb_tools, kb_mapping = build_openai_tools(bot_kbs)
 
-    tools = ((mcp_tools or []) + (skill_tools or []) + (kb_tools or [])) or None
+    # 联网搜索：作为可调用工具暴露给模型（机器人能力，不受用户 scope 限制）
+    setting = get_setting(db)
+    search_provider = setting.search_provider or ""
+    web_search_enabled = bool(bot.web_search and search_provider)
+    if web_search_enabled:
+        logger.debug(
+            f"[wecom-bot] web_search tool enabled provider={search_provider!r}"
+        )
+
+    base_tools: list[dict] = []
+    if web_search_enabled:
+        base_tools.append(build_web_search_tool())
+    base_tools.extend(mcp_tools or [])
+    base_tools.extend(skill_tools or [])
+    base_tools.extend(kb_tools or [])
+    tools = base_tools or None
 
     for s in skills:
         if s.content:
             messages = [{"role": "system", "content": s.content}] + messages
+
+    # 系统提示词：按 机器人 > 基础配置 > 模型接口 > 通用 优先级取用，置于最前
+    prompt = resolve_system_prompt(db, bot=bot, endpoint=endpoint)
+    if prompt:
+        logger.debug(f"[wecom-bot] system_prompt len={len(prompt)}")
+        messages = [{"role": "system", "content": prompt}] + messages
 
     async with httpx.AsyncClient(timeout=120) as client:
         content = ""
@@ -194,6 +202,10 @@ async def generate_reply(
             body: dict = {"model": model, "messages": messages, "stream": False}
             if tools and round_index < 1:
                 body["tools"] = tools
+            logger.debug(
+                f"[wecom-bot] LLM POST {base_url}/chat/completions round={round_index} "
+                f"body={json.dumps(body, ensure_ascii=False)}"
+            )
             resp = await client.post(
                 f"{base_url}/chat/completions",
                 headers=headers,
@@ -201,6 +213,10 @@ async def generate_reply(
             )
             resp.raise_for_status()
             data = resp.json()
+            logger.debug(
+                f"[wecom-bot] LLM RESPONSE round={round_index} "
+                f"data={json.dumps(data, ensure_ascii=False)}"
+            )
             choice = (data.get("choices") or [{}])[0]
             msg = choice.get("message") or {}
             content = (msg.get("content") or "").strip()
@@ -220,7 +236,26 @@ async def generate_reply(
                     args = json.loads(fn.get("arguments") or "{}")
                 except Exception:
                     args = {}
-                if name in mcp_mapping:
+                if name == "web_search":
+                    query = args.get("query", "")
+                    logger.debug(
+                        f"[wecom-bot] web_search provider={search_provider!r} query={query!r}"
+                    )
+                    try:
+                        results = await search_web(
+                            search_provider,
+                            setting.search_api_key,
+                            setting.search_base_url,
+                            query,
+                        )
+                        tool_content = format_results(results)
+                        logger.debug(
+                            f"[wecom-bot] web_search_result results={len(results)}"
+                        )
+                    except Exception as exc:
+                        logger.debug(f"[wecom-bot] web_search_error err={exc!r}")
+                        tool_content = "联网搜索失败，请稍后重试。"
+                elif name in mcp_mapping:
                     server, tool_name = mcp_mapping[name]
                     try:
                         tool_content = await mcp_core.call_tool(server, tool_name, args)

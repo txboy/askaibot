@@ -20,7 +20,14 @@ from app.security import hash_password, verify_password
 from app.services import groups as groups_core
 
 router = APIRouter()
-__all__ = ["create_endpoint", "delete_endpoint", "endpoints_usage", "list_endpoints", "update_endpoint"]
+__all__ = [
+    "create_endpoint",
+    "delete_endpoint",
+    "endpoints_usage",
+    "list_endpoints",
+    "update_endpoint",
+]
+
 
 def _endpoint_out(e: models.ApiEndpoint, db: Session) -> schemas.EndpointOut:
     return schemas.EndpointOut(
@@ -32,8 +39,10 @@ def _endpoint_out(e: models.ApiEndpoint, db: Session) -> schemas.EndpointOut:
         enabled=e.enabled,
         is_default=e.is_default,
         scope=e.scope or "global",
+        system_prompt=e.system_prompt or "",
         group_ids=groups_core.group_ids_for_resource(db, "endpoint", e.id),
     )
+
 
 @router.get("/endpoints", response_model=list[schemas.EndpointOut])
 def list_endpoints(
@@ -41,6 +50,7 @@ def list_endpoints(
     db: Session = Depends(get_db),
 ):
     return [_endpoint_out(e, db) for e in db.query(models.ApiEndpoint).all()]
+
 
 @router.post("/endpoints", response_model=schemas.EndpointOut)
 def create_endpoint(
@@ -56,11 +66,13 @@ def create_endpoint(
         enabled=payload.enabled or 1,
         is_default=payload.is_default or 0,
         scope=payload.scope or "global",
+        system_prompt=payload.system_prompt or "",
     )
     db.add(endpoint)
     db.commit()
     db.refresh(endpoint)
     return _endpoint_out(endpoint, db)
+
 
 @router.get("/endpoints/usage")
 def endpoints_usage(
@@ -106,6 +118,7 @@ def endpoints_usage(
         )
     return result
 
+
 @router.put("/endpoints/{endpoint_id}", response_model=schemas.EndpointOut)
 def update_endpoint(
     endpoint_id: int,
@@ -134,6 +147,8 @@ def update_endpoint(
             ).update({"is_default": 0})
     if payload.scope is not None:
         endpoint.scope = payload.scope
+    if payload.system_prompt is not None:
+        endpoint.system_prompt = payload.system_prompt
     db.commit()
     db.refresh(endpoint)
     if payload.group_ids is not None:
@@ -141,6 +156,7 @@ def update_endpoint(
         db.commit()
         db.refresh(endpoint)
     return _endpoint_out(endpoint, db)
+
 
 @router.delete("/endpoints/{endpoint_id}")
 def delete_endpoint(

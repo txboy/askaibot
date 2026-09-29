@@ -61,7 +61,16 @@ class FakeResp:
 def test_user_token_posts_and_parses(monkeypatch):
     fake = FakeHttp(
         FakeResp(
-            {"code": 0, "access_token": "u-1", "open_id": "ou_x", "union_id": "on_x"}
+            {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "access_token": "u-1",
+                    "open_id": "ou_x",
+                    "union_id": "on_x",
+                    "name": "张三",
+                },
+            }
         )
     )
     monkeypatch.setattr(auth_mod.httpx, "AsyncClient", lambda *a, **k: fake)

@@ -10,7 +10,7 @@ import asyncio
 import json
 import os
 import shlex
-import shutil
+import socket
 import subprocess
 import tarfile
 import zipfile
@@ -214,51 +214,80 @@ def _clean_env() -> dict:
     }
 
 
-def _finish(proc: subprocess.CompletedProcess) -> str:
-    out = proc.stdout or ""
-    err = proc.stderr or ""
-    if proc.returncode == 0:
+def _format_result(rc: int, out: str, err: str) -> str:
+    out = out or ""
+    err = err or ""
+    if rc == 0:
         return out.strip() or "（无输出）"
-    return f"技能执行失败（退出码 {proc.returncode}）：\n{err or out}"
+    return f"技能执行失败（退出码 {rc}）：\n{err or out}"
+
+
+def _finish(proc: subprocess.CompletedProcess) -> str:
+    return _format_result(proc.returncode, proc.stdout, proc.stderr)
 
 
 def _run_docker(skill: models.Skill, command: str, args_json: str) -> str:
-    if shutil.which("docker") is None:
-        raise RuntimeError("docker 不可用")
+    """通过 Docker SDK（挂载 /var/run/docker.sock）执行技能工具。"""
+    try:
+        import docker
+    except ImportError as e:
+        raise RuntimeError(f"docker SDK 不可用：{e}")
+    try:
+        client = docker.from_env()
+    except Exception as e:
+        raise RuntimeError(f"docker 守护进程不可达：{e}")
     upload_dir = os.path.abspath(config.upload_dir)
     rel = os.path.relpath(os.path.abspath(skill.dir_path), upload_dir)
     workdir = f"{config.skill_data_mount.rstrip('/')}/{rel.replace(os.sep, '/')}"
-    cmd = [
-        "docker",
-        "run",
-        "--rm",
-        "-i",
-        "--cpus",
-        config.skill_cpus,
-        "--memory",
-        config.skill_memory,
-        "--pids-limit",
-        str(config.skill_pids_limit),
-        "-v",
-        f"{config.skill_data_volume}:{config.skill_data_mount}:ro",
-        "-w",
-        workdir,
-        config.skill_runner_image,
-        "sh",
-        "-c",
-        command,
-    ]
     try:
-        proc = subprocess.run(
-            cmd,
-            input=args_json,
-            capture_output=True,
-            text=True,
-            timeout=config.skill_timeout,
+        container = client.containers.create(
+            config.skill_runner_image,
+            command=["sh", "-c", command],
+            working_dir=workdir,
+            volumes={
+                config.skill_data_volume: {
+                    "bind": config.skill_data_mount,
+                    "mode": "ro",
+                }
+            },
+            nano_cpus=int(float(config.skill_cpus) * 1_000_000_000),
+            mem_limit=config.skill_memory,
+            pids_limit=config.skill_pids_limit,
+            stdin_open=True,
+            detach=True,
         )
-    except subprocess.TimeoutExpired:
-        return f"技能执行超时（>{config.skill_timeout}s）"
-    return _finish(proc)
+    except Exception as e:
+        raise RuntimeError(f"docker 容器创建失败：{e}")
+    try:
+        container.start()
+        try:
+            sock = client.api.attach_socket(
+                container.id,
+                params={"stdin": 1, "stdout": 0, "stderr": 0, "stream": 1},
+            )
+            sock.sendall(args_json.encode("utf-8"))
+            sock.shutdown(socket.SHUT_WR)
+            sock.close()
+        except Exception:
+            pass
+        try:
+            res = container.wait(timeout=config.skill_timeout)
+            rc = int(res.get("StatusCode") or 0)
+        except Exception:
+            container.remove(force=True)
+            return f"技能执行超时（>{config.skill_timeout}s）"
+        out = (container.logs(stdout=True, stderr=False) or b"").decode(
+            "utf-8", "replace"
+        )
+        err = (container.logs(stdout=False, stderr=True) or b"").decode(
+            "utf-8", "replace"
+        )
+    finally:
+        try:
+            container.remove(force=True)
+        except Exception:
+            pass
+    return _format_result(rc, out, err)
 
 
 def _run_local(skill: models.Skill, command: str, args_json: str) -> str:

@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, String
+from sqlalchemy import Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
@@ -11,6 +11,10 @@ class Setting(Base):
     base_url: Mapped[str] = mapped_column(String, default="https://api.openai.com/v1")
     api_key: Mapped[str] = mapped_column(String, default="")
     default_model: Mapped[str] = mapped_column(String, default="gpt-4o-mini")
+    system_prompt: Mapped[str] = mapped_column(Text, default="")  # 通用
+    wecom_system_prompt: Mapped[str] = mapped_column(Text, default="")
+    dingtalk_system_prompt: Mapped[str] = mapped_column(Text, default="")
+    feishu_system_prompt: Mapped[str] = mapped_column(Text, default="")
     wecom_corp_id: Mapped[str] = mapped_column(String, default="")
     wecom_secret: Mapped[str] = mapped_column(String, default="")
     wecom_agent_id: Mapped[str] = mapped_column(String, default="")
@@ -52,4 +56,6 @@ class Setting(Base):
     search_api_key: Mapped[str] = mapped_column(String, default="")
     search_base_url: Mapped[str] = mapped_column(String, default="")
     search_auto: Mapped[int] = mapped_column(Integer, default=0)
-    search_scope: Mapped[str] = mapped_column(String, default="global")  # global / group
+    search_scope: Mapped[str] = mapped_column(
+        String, default="global"
+    )  # global / group

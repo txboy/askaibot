@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -22,6 +22,7 @@ class WecomBot(Base):
     mcp_ids: Mapped[str] = mapped_column(String, default="")  # 逗号分隔
     skill_ids: Mapped[str] = mapped_column(String, default="")  # 逗号分隔
     web_search: Mapped[int] = mapped_column(Integer, default=0)
+    system_prompt: Mapped[str] = mapped_column(Text, default="")
     endpoint_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("api_endpoints.id"), nullable=True
     )

@@ -13,7 +13,13 @@ from app.services import mcp as mcp_core
 from app.services import skills as skill_core
 from app import models, schemas
 from app.auth import get_current_user
-from app.common import build_content_parts, get_setting, parse_models
+from app.common import (
+    build_content_parts,
+    get_setting,
+    parse_models,
+    resolve_system_prompt,
+    user_platform,
+)
 from app.database import get_db
 from app.services.kb import build_openai_tools, format_kb_context, retrieve_kb
 from app.services.search import format_results, search_web
@@ -56,6 +62,12 @@ def chat(
     logger.debug(
         f"[chat] history={len(history)} openai_messages={len(openai_messages)}"
     )
+
+    # 系统提示词：基础配置(用户注册平台) > 模型接口 > 通用，置于最前
+    prompt = resolve_system_prompt(db, endpoint=endpoint, provider=user_platform(user))
+    if prompt:
+        logger.debug(f"[chat] system_prompt len={len(prompt)}")
+        openai_messages = [{"role": "system", "content": prompt}] + openai_messages
 
     kb_cfg = _resolve_frontend_kb(db, payload.knowledge_base_id, user)
     headers = _build_request_headers(api_key)
@@ -328,9 +340,7 @@ def _resolve_frontend_kb(
 
     kb = db.get(models.KnowledgeBase, knowledge_base_id)
     if kb and kb.enabled and kb.mode == "frontend":
-        if groups_core.is_accessible(
-            db, user.id, "knowledge_base", kb.id, kb.scope
-        ):
+        if groups_core.is_accessible(db, user.id, "knowledge_base", kb.id, kb.scope):
             return kb
     return None
 
@@ -344,7 +354,10 @@ def _build_request_headers(api_key: str) -> dict:
 
 
 def _should_search(
-    payload: schemas.ChatRequest, setting: models.Setting, db: Session, user: models.User
+    payload: schemas.ChatRequest,
+    setting: models.Setting,
+    db: Session,
+    user: models.User,
 ) -> bool:
     """判断本轮是否需要联网搜索（请求开启或系统默认开启，且已配置搜索服务，且用户被允许）。"""
     from app.services import groups as groups_core
@@ -359,23 +372,9 @@ def _should_search(
 
 def _build_search_tool() -> dict:
     """构造 web_search 函数工具定义，用于让模型发起联网搜索。"""
-    return {
-        "type": "function",
-        "function": {
-            "name": "web_search",
-            "description": "联网搜索获取实时或最新信息，用于回答需要外部知识或最新数据的问题。",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "要搜索的关键词或完整问题",
-                    }
-                },
-                "required": ["query"],
-            },
-        },
-    }
+    from app.services.search import build_web_search_tool
+
+    return build_web_search_tool()
 
 
 def _build_tool_calls_payload(ready_calls: list[dict]) -> list[dict]:

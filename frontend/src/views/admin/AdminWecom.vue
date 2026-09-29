@@ -2,11 +2,13 @@
 import { ref, onMounted } from 'vue'
 import { api } from '../../api'
 import BotManager from './BotManager.vue'
+import LoginGuide from '../../components/admin/LoginGuide.vue'
 
 const wecomCorpId = ref('')
 const wecomSecret = ref('')
 const wecomAgentId = ref('')
 const wecomRedirect = ref('')
+const wecomSystemPrompt = ref('')
 const wecomSecretSet = ref(false)
 const wecomMsg = ref('')
 const savingWecom = ref(false)
@@ -17,6 +19,7 @@ async function loadWecom() {
     wecomCorpId.value = w.wecom_corp_id
     wecomAgentId.value = w.wecom_agent_id
     wecomRedirect.value = w.wecom_redirect
+    wecomSystemPrompt.value = w.system_prompt || ''
     wecomSecretSet.value = w.wecom_secret_set
   } catch {
     wecomMsg.value = '加载企业微信配置失败'
@@ -31,6 +34,7 @@ async function saveWecom() {
       wecom_corp_id: wecomCorpId.value,
       wecom_agent_id: wecomAgentId.value,
       wecom_redirect: wecomRedirect.value,
+      system_prompt: wecomSystemPrompt.value,
     }
     if (wecomSecret.value) body.wecom_secret = wecomSecret.value
     await api.adminSaveWecom(body)
@@ -59,11 +63,16 @@ onMounted(loadWecom)
         <label>AgentId<input v-model="wecomAgentId" class="input" placeholder="应用 AgentId" /></label>
         <label>回调域名<input v-model="wecomRedirect" class="input" placeholder="如 https://your.domain" /></label>
       </div>
+      <label class="sm-label" style="margin-top: 12px">系统提示词
+        <textarea v-model="wecomSystemPrompt" class="input" rows="4" placeholder="企微基础配置默认提示词；优先级低于机器人提示词。留空则继续向下（模型接口/通用）选择。"></textarea>
+      </label>
       <div class="card-foot">
         <p v-if="wecomMsg" class="hint">{{ wecomMsg }}</p>
         <button class="btn" :disabled="savingWecom" @click="saveWecom">{{ savingWecom ? '保存中…' : '保存企业微信配置' }}</button>
       </div>
     </div>
+
+    <LoginGuide provider="wecom" :redirect="wecomRedirect" />
 
     <BotManager provider="wecom" />
   </section>

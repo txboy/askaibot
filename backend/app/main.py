@@ -106,6 +106,16 @@ def _ensure_columns() -> None:
             if name not in cols:
                 with engine.begin() as conn:
                     conn.execute(text(f"ALTER TABLE settings ADD COLUMN {name} {ddl}"))
+        system_prompt_settings = {
+            "system_prompt": "TEXT DEFAULT ''",
+            "wecom_system_prompt": "TEXT DEFAULT ''",
+            "dingtalk_system_prompt": "TEXT DEFAULT ''",
+            "feishu_system_prompt": "TEXT DEFAULT ''",
+        }
+        for name, ddl in system_prompt_settings.items():
+            if name not in cols:
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE settings ADD COLUMN {name} {ddl}"))
         dingtalk_settings = {
             "dingtalk_app_key": "VARCHAR DEFAULT ''",
             "dingtalk_app_secret": "VARCHAR DEFAULT ''",
@@ -194,14 +204,25 @@ def _ensure_columns() -> None:
         if "scope" not in ecols:
             with engine.begin() as conn:
                 conn.execute(
-                    text("ALTER TABLE api_endpoints ADD COLUMN scope VARCHAR DEFAULT 'global'")
+                    text(
+                        "ALTER TABLE api_endpoints ADD COLUMN scope VARCHAR DEFAULT 'global'"
+                    )
+                )
+        if "system_prompt" not in ecols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE api_endpoints ADD COLUMN system_prompt TEXT DEFAULT ''"
+                    )
                 )
     if "mcp_servers" in insp.get_table_names():
         mcols = {c["name"] for c in insp.get_columns("mcp_servers")}
         if "scope" not in mcols:
             with engine.begin() as conn:
                 conn.execute(
-                    text("ALTER TABLE mcp_servers ADD COLUMN scope VARCHAR DEFAULT 'global'")
+                    text(
+                        "ALTER TABLE mcp_servers ADD COLUMN scope VARCHAR DEFAULT 'global'"
+                    )
                 )
     if "skills" in insp.get_table_names():
         scols = {c["name"] for c in insp.get_columns("skills")}
@@ -229,6 +250,13 @@ def _ensure_columns() -> None:
                 conn.execute(
                     text(
                         "ALTER TABLE wecom_bots ADD COLUMN skill_ids VARCHAR DEFAULT ''"
+                    )
+                )
+        if "system_prompt" not in bcols:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE wecom_bots ADD COLUMN system_prompt TEXT DEFAULT ''"
                     )
                 )
 

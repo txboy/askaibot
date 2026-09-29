@@ -235,6 +235,126 @@ def test_generate_reply_exposes_bound_kb_as_tool(db, monkeypatch):
     )
 
 
+def test_generate_reply_exposes_web_search_tool(db, monkeypatch):
+    ep = models.ApiEndpoint(
+        id=1,
+        name="ep",
+        base_url="https://api.example/v1",
+        api_key="k",
+        models="gpt-test",
+        enabled=1,
+    )
+    setting = models.Setting(id=1, search_provider="tavily", search_api_key="sk")
+    bot = _bot(endpoint_id=1, model="gpt-test", web_search=1)
+    user = models.User(id=1, nickname="u")
+    conversation = models.Conversation(id=1, user_id=1, bot_id=1, title="c")
+    db.add_all([ep, setting, bot, user, conversation])
+    db.flush()
+    db.add(models.Message(conversation_id=1, role="user", content="今天天气"))
+    db.commit()
+
+    searched = []
+
+    async def fake_search(provider, api_key, base_url, query, max_results=5):
+        searched.append((provider, api_key, base_url, query))
+        return [{"title": "天气", "url": "http://x", "content": "晴 23度"}]
+
+    monkeypatch.setattr(bot_core, "search_web", fake_search)
+
+    class SeqLLMClient(FakeHttp):
+        def __init__(self):
+            super().__init__(FakeResp({}))
+            self._i = 0
+
+        async def post(self, url, **kwargs):
+            self.posts.append((url, kwargs))
+            if self._i == 0:
+                self._i += 1
+                return FakeResp(
+                    {
+                        "choices": [
+                            {
+                                "message": {
+                                    "role": "assistant",
+                                    "content": None,
+                                    "tool_calls": [
+                                        {
+                                            "id": "c1",
+                                            "type": "function",
+                                            "function": {
+                                                "name": "web_search",
+                                                "arguments": '{"query": "今天天气"}',
+                                            },
+                                        }
+                                    ],
+                                }
+                            }
+                        ]
+                    }
+                )
+            return FakeResp(
+                {"choices": [{"message": {"role": "assistant", "content": "今天晴"}}]}
+            )
+
+    fake = SeqLLMClient()
+    monkeypatch.setattr(bot_core.httpx, "AsyncClient", lambda *a, **k: fake)
+
+    reply = asyncio.run(bot_core.generate_reply(db, conversation, bot))
+    assert reply == "今天晴"
+
+    first_url, first_kwargs = fake.posts[0]
+    tools = first_kwargs["json"].get("tools") or []
+    assert any(t["function"]["name"] == "web_search" for t in tools)
+
+    assert searched == [("tavily", "sk", "", "今天天气")]
+
+    second_url, second_kwargs = fake.posts[1]
+    assert any(
+        m["role"] == "tool" and "天气" in m["content"]
+        for m in second_kwargs["json"]["messages"]
+    )
+
+
+def test_generate_reply_prepends_bot_system_prompt(db, monkeypatch):
+    ep = models.ApiEndpoint(
+        id=1,
+        name="ep",
+        base_url="https://api.example/v1",
+        api_key="k",
+        models="gpt-test",
+        enabled=1,
+    )
+    bot = _bot(endpoint_id=1, model="gpt-test", system_prompt="你是专业助手")
+    user = models.User(id=1, nickname="u")
+    conversation = models.Conversation(id=1, user_id=1, bot_id=1, title="c")
+    db.add_all([ep, bot, user, conversation])
+    db.flush()
+    db.add(models.Message(conversation_id=1, role="user", content="你好"))
+    db.commit()
+
+    class LLMClient(FakeHttp):
+        def __init__(self):
+            super().__init__(
+                FakeResp(
+                    {
+                        "choices": [
+                            {"message": {"role": "assistant", "content": "你好呀"}}
+                        ]
+                    }
+                )
+            )
+
+    fake = LLMClient()
+    monkeypatch.setattr(bot_core.httpx, "AsyncClient", lambda *a, **k: fake)
+
+    reply = asyncio.run(bot_core.generate_reply(db, conversation, bot))
+    assert reply == "你好呀"
+    _, kwargs = fake.posts[0]
+    msgs = kwargs["json"]["messages"]
+    assert msgs[0]["role"] == "system"
+    assert msgs[0]["content"] == "你是专业助手"
+
+
 def test_receive_text_flow(db, monkeypatch):
     bot = _bot()
     db.add(bot)

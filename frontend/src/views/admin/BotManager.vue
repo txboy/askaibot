@@ -12,6 +12,7 @@ const bots = ref([])
 const botMsg = ref('')
 const savingBot = ref(false)
 const editingBot = ref(null)
+const copiedId = ref(null)
 const endpoints = ref([])
 const kbs = ref([])
 const mcps = ref([])
@@ -47,6 +48,29 @@ const botModelOptions = computed(() => {
 
 function botIdValue(b) {
   return isFeishu.value ? b.corp_id : b.agent_id
+}
+
+async function copyText(text, id) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+    copiedId.value = id
+    setTimeout(() => {
+      if (copiedId.value === id) copiedId.value = null
+    }, 1500)
+  } catch {
+    botMsg.value = '复制失败'
+  }
 }
 
 async function loadBots() {
@@ -89,6 +113,7 @@ function openBotCreate() {
     endpoint_id: null,
     model: '',
     enabled: 1,
+    system_prompt: '',
   }
   loadBotOptions()
 }
@@ -113,6 +138,7 @@ function openBotEdit(b) {
     endpoint_id: b.endpoint_id,
     model: b.model,
     enabled: b.enabled,
+    system_prompt: b.system_prompt || '',
   }
   loadBotOptions()
 }
@@ -158,6 +184,7 @@ async function saveBot() {
       endpoint_id: f.endpoint_id || null,
       model: f.model,
       enabled: f.enabled,
+      system_prompt: f.system_prompt,
     }
     if (f.secret) body.secret = f.secret
     if (f.aes_key) body.aes_key = f.aes_key
@@ -205,6 +232,7 @@ onMounted(loadBots)
           <th>知识库</th>
           <th>MCP</th>
           <th>启用</th>
+          <th>回调地址</th>
           <th>操作</th>
         </tr>
       </thead>
@@ -216,17 +244,95 @@ onMounted(loadBots)
           <td>{{ b.kb_ids || '—' }}</td>
           <td>{{ b.mcp_ids || '—' }}</td>
           <td>{{ b.enabled ? '✓' : '✕' }}</td>
+          <td class="cb-cell">
+            <code class="cb-text" :title="b.callback_url">{{ b.callback_url }}</code>
+            <button class="btn btn-copy" @click="copyText(b.callback_url, b.id)">
+              {{ copiedId === b.id ? '已复制' : '复制' }}
+            </button>
+          </td>
           <td class="ops">
             <button class="btn btn-edit" @click="openBotEdit(b)">编辑</button>
             <button class="btn btn-del" @click="delBot(b)">删除</button>
           </td>
         </tr>
         <tr v-if="!bots.length">
-          <td colspan="7" class="empty">{{ emptyText }}</td>
+          <td colspan="8" class="empty">{{ emptyText }}</td>
         </tr>
       </tbody>
     </table>
     <p class="hint" style="margin-top: 10px">{{ hintText }}</p>
+
+    <details v-if="isFeishu" class="bot-guide">
+      <summary>飞书开放平台侧（应用配置）</summary>
+      <div class="guide">
+        <p>
+          <b>1. 创建应用</b>：在飞书开放平台创建「企业自建应用」，于「应用能力」开启「机器人」。
+        </p>
+        <p>
+          <b>2. 获取凭证</b>：「凭证与基础信息」复制 <code>App ID</code>（<code>cli_</code> 开头）与 <code>App Secret</code>。
+        </p>
+        <p>
+          <b>3. 配置权限</b>：「权限管理」添加并申请发送/接收消息权限（如 <code>im:message</code>），并「创建版本并发布」。
+        </p>
+        <p>
+          <b>4. 配置事件订阅</b>：在「事件订阅」页，<b>订阅方式选择「将回调发送至开发者服务器」</b>，然后在「请求地址」填入本机器人的回调地址（见上方表格「回调地址」列，可一键复制）：</p>
+        <p>
+          订阅事件 <code>im.message.receive_v1</code>；并把飞书的「校验 Token」填到编辑弹窗的 <code>URL 验证 Token</code>。
+        </p>
+        <p>
+          <b>（可选）加密</b>：若在飞书「事件订阅」开启了加密，必须把同一把 <code>Encrypt Key</code> 填入编辑弹窗的 <code>EncryptKey</code>；否则回调会返回 <code>403 解密失败</code>。
+        </p>
+        <p><b>5. 验证</b>：保存后飞书会发送 <code>url_verification</code>，本系统返回 challenge 即绑定成功。</p>
+        <p>
+          <b>常见问题</b>：收不到消息时检查应用是否已发布、事件订阅是否开启、回调地址是否公网可访问（建议 HTTPS）、校验 Token / EncryptKey 是否与本系统一致、机器人是否有发送权限；若返回 <code>403 解密失败</code>，说明飞书开启了加密但本机的 <code>EncryptKey</code> 与飞书不一致，请核对或改为不加密。
+        </p>
+      </div>
+    </details>
+
+    <details v-else-if="isDingtalk" class="bot-guide">
+      <summary>钉钉开放平台侧（应用配置）</summary>
+      <div class="guide">
+        <p>
+          <b>1. 创建应用</b>：在钉钉开放平台创建「企业内部应用」，开启「机器人」能力。
+        </p>
+        <p>
+          <b>2. 获取凭证</b>：复制 <code>AppKey</code>（Client ID）、<code>AppSecret</code>（Client Secret）与 <code>AgentId</code>。
+        </p>
+        <p>
+          <b>3. 配置权限</b>：添加消息发送/接收相关权限（如「企业机器人发消息」）并发布/上线。
+        </p>
+        <p>
+          <b>4. 配置回调</b>：应用「消息接收」配置 HTTP 回调地址为本机器人的回调地址（见上方表格「回调地址」列，可一键复制）。</p>
+        <p>
+          并在「加密与验证」填写 <code>Token</code> 与 <code>EncodingAESKey</code>（与本系统编辑弹窗一致）。
+        </p>
+        <p><b>5. 验证</b>：钉钉会向该地址发起加解密校验，能正确返回即配置成功。</p>
+        <p>
+          <b>常见问题</b>：收不到消息时检查应用是否发布、机器人是否启用、回调地址是否公网可访问、Token / EncodingAESKey 是否一致。
+        </p>
+      </div>
+    </details>
+
+    <details v-else class="bot-guide">
+      <summary>企微开放平台侧（应用配置）</summary>
+      <div class="guide">
+        <p>
+          <b>1. 创建应用</b>：企业微信管理后台 → 应用管理 → 创建「自建应用」。
+        </p>
+        <p>
+          <b>2. 获取凭证</b>：复制 <code>CorpID</code>（我的企业 → 企业信息）、应用 <code>Secret</code> 与 <code>AgentId</code>。
+        </p>
+        <p>
+          <b>3. 配置回调</b>：应用「API 接收消息」设置 URL、Token、EncodingAESKey（URL 填上方表格「回调地址」列，可一键复制）：</p>
+        <p>
+          <code>Token</code> 与 <code>EncodingAESKey</code> 需与本系统编辑弹窗一致。
+        </p>
+        <p><b>4. 验证</b>：企微会向该地址发送校验请求，能返回「解密数据」即配置成功。</p>
+        <p>
+          <b>常见问题</b>：收不到消息时检查应用是否启用、可信 IP / 域名是否配置、回调地址是否公网可访问、Token / EncodingAESKey 是否一致。
+        </p>
+      </div>
+    </details>
 
     <div v-if="editingBot" class="modal-mask">
       <div class="modal">
@@ -251,6 +357,7 @@ onMounted(loadBots)
             <option v-for="m in botModelOptions" :key="m" :value="m">{{ m }}</option>
           </select>
         </label>
+        <label>系统提示词<textarea v-model="editingBot.system_prompt" class="input" rows="4" placeholder="该机器人的系统提示词，优先级最高。留空则使用 基础配置/模型接口/通用 的提示词。"></textarea></label>
         <div class="form-2">
           <label>知识库
             <div class="kb-checkbox-list">
@@ -303,3 +410,62 @@ onMounted(loadBots)
     />
   </div>
 </template>
+
+<style scoped>
+.bot-guide {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  padding: 10px 12px;
+}
+
+.bot-guide summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.guide {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.guide p {
+  margin: 0;
+}
+
+.guide code {
+  background: var(--bg-sidebar);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.cb-cell {
+  white-space: nowrap;
+}
+
+.cb-text {
+  display: inline-block;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.btn-copy {
+  margin-left: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+</style>

@@ -2,6 +2,7 @@ import asyncio
 import json
 
 import pytest
+from fastapi import BackgroundTasks
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -96,9 +97,19 @@ def _challenge_body():
 def test_url_verification_returns_challenge(db):
     db.add(_bot())
     db.commit()
-    resp = asyncio.run(fs_router.receive(1, FakeRequest(_challenge_body()), db=db))
+    resp = asyncio.run(
+        fs_router.receive(1, FakeRequest(_challenge_body()), BackgroundTasks(), db=db)
+    )
     assert resp.status_code == 200
     assert json.loads(resp.body)["challenge"] == "abc123"
+
+
+def test_decrypt_official_feishu_vector():
+    # 官方文档示例：encrypt="P37w+VZImNgPEO1RBhJ6RtKl7n6zymIbEG1pReEzghk=", key="test key" -> "hello world"
+    assert (
+        fc.decrypt("test key", "P37w+VZImNgPEO1RBhJ6RtKl7n6zymIbEG1pReEzghk=")
+        == "hello world"
+    )
 
 
 def test_url_verification_token_mismatch_raises(db):
@@ -108,7 +119,7 @@ def test_url_verification_token_mismatch_raises(db):
         {"challenge": "abc", "token": "wrong", "type": "url_verification"}
     ).encode()
     with pytest.raises(Exception):
-        asyncio.run(fs_router.receive(1, FakeRequest(body), db=db))
+        asyncio.run(fs_router.receive(1, FakeRequest(body), BackgroundTasks(), db=db))
 
 
 def test_encrypted_url_verification_returns_encrypted_challenge(db):
@@ -118,7 +129,9 @@ def test_encrypted_url_verification_returns_encrypted_challenge(db):
         {"challenge": "xyz", "token": "verify-token", "type": "url_verification"}
     )
     body = json.dumps({"encrypt": fc.encrypt(ENC_KEY, plain)}).encode()
-    resp = asyncio.run(fs_router.receive(1, FakeRequest(body), db=db))
+    resp = asyncio.run(
+        fs_router.receive(1, FakeRequest(body), BackgroundTasks(), db=db)
+    )
     assert resp.status_code == 200
     resp_data = json.loads(resp.body)
     assert "encrypt" in resp_data
@@ -170,9 +183,12 @@ def test_receive_event_replies(db, monkeypatch):
 
     monkeypatch.setattr(fs_router, "generate_reply", fake_reply)
     monkeypatch.setattr(fs_core, "send_text", fake_send)
+    monkeypatch.setattr(fs_router, "SessionLocal", sessionmaker(bind=db.get_bind()))
 
-    resp = asyncio.run(fs_router.receive(1, FakeRequest(body), db=db))
+    bt = BackgroundTasks()
+    resp = asyncio.run(fs_router.receive(1, FakeRequest(body), bt, db=db))
     assert resp.status_code == 200
+    asyncio.run(bt())
 
     user = db.query(models.User).filter(models.User.feishu_userid == "ou_123").first()
     assert user is not None
@@ -206,14 +222,57 @@ def test_receive_non_text_replies_unsupported(db, monkeypatch):
         sent.append((open_id, content))
 
     monkeypatch.setattr(fs_core, "send_text", fake_send)
-    asyncio.run(fs_router.receive(1, FakeRequest(body), db=db))
+    monkeypatch.setattr(fs_router, "SessionLocal", sessionmaker(bind=db.get_bind()))
+    bt = BackgroundTasks()
+    asyncio.run(fs_router.receive(1, FakeRequest(body), bt, db=db))
+    asyncio.run(bt())
     assert sent and sent[0][1] == "暂不支持该类型消息，请发送文字。"
 
 
 def test_receive_missing_bot_raises(db):
     body = json.dumps({"challenge": "x"}).encode()
     with pytest.raises(Exception):
-        asyncio.run(fs_router.receive(999, FakeRequest(body), db=db))
+        asyncio.run(fs_router.receive(999, FakeRequest(body), BackgroundTasks(), db=db))
+
+
+def test_receive_duplicate_event_skips_processing(db, monkeypatch):
+    db.add(_bot())
+    db.commit()
+    monkeypatch.setattr(fs_router, "SessionLocal", sessionmaker(bind=db.get_bind()))
+
+    event = {
+        "schema": "2.0",
+        "header": {"event_type": "im.message.receive_v1", "event_id": "dup1"},
+        "event": {
+            "sender": {"sender_id": {"open_id": "ou_dup"}},
+            "message": {
+                "message_type": "text",
+                "content": json.dumps({"text": "hi"}),
+            },
+        },
+    }
+    body = json.dumps(event).encode()
+    sent = []
+
+    async def fake_send(open_id, content, app_id, app_secret):
+        sent.append((open_id, content))
+
+    async def fake_reply(db, conversation, bot):
+        return "ok"
+
+    monkeypatch.setattr(fs_core, "send_text", fake_send)
+    monkeypatch.setattr(fs_router, "generate_reply", fake_reply)
+
+    bt1 = BackgroundTasks()
+    asyncio.run(fs_router.receive(1, FakeRequest(body), bt1, db=db))
+    asyncio.run(bt1())
+    assert len(sent) == 1
+
+    bt2 = BackgroundTasks()
+    asyncio.run(fs_router.receive(1, FakeRequest(body), bt2, db=db))
+    asyncio.run(bt2())
+    assert len(sent) == 1
+    assert db.query(models.BotEvent).count() == 1
 
 
 def test_get_access_token_caches(monkeypatch):

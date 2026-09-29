@@ -19,7 +19,24 @@ from app.database import get_db
 from app.security import hash_password, verify_password
 
 router = APIRouter()
-__all__ = ["admin_access", "admin_get_debug", "admin_get_theme", "admin_save_debug", "admin_save_theme", "change_password", "delete_assistant_avatar", "delete_favicon", "delete_logo", "get_system", "logo_status", "stats", "update_system", "upload_assistant_avatar", "upload_favicon", "upload_logo"]
+__all__ = [
+    "admin_access",
+    "admin_get_debug",
+    "admin_get_theme",
+    "admin_save_debug",
+    "admin_save_theme",
+    "change_password",
+    "delete_assistant_avatar",
+    "delete_favicon",
+    "delete_logo",
+    "get_system",
+    "logo_status",
+    "stats",
+    "update_system",
+    "upload_assistant_avatar",
+    "upload_favicon",
+    "upload_logo",
+]
 
 _SECRET_HEADER_KEYS = {
     "authorization",
@@ -31,6 +48,7 @@ _SECRET_HEADER_KEYS = {
     "secret",
     "x-auth-token",
 }
+
 
 @router.get("/stats")
 def stats(
@@ -61,6 +79,7 @@ def stats(
         "month_tokens": month_tokens,
     }
 
+
 @router.get("/system", response_model=schemas.SystemOut)
 def get_system(
     admin: models.Admin = Depends(get_current_admin),
@@ -76,7 +95,9 @@ def get_system(
         admin_secret=setting.admin_secret,
         assistant_name=setting.assistant_name or "askai",
         assistant_avatar_set=bool(setting.assistant_avatar),
+        system_prompt=setting.system_prompt or "",
     )
+
 
 @router.put("/system", response_model=schemas.SystemOut)
 def update_system(
@@ -93,6 +114,8 @@ def update_system(
         setting.admin_secret = payload.admin_secret
     if payload.assistant_name is not None:
         setting.assistant_name = payload.assistant_name.strip() or "askai"
+    if payload.system_prompt is not None:
+        setting.system_prompt = payload.system_prompt
     db.commit()
     db.refresh(setting)
     return schemas.SystemOut(
@@ -104,7 +127,9 @@ def update_system(
         admin_secret=setting.admin_secret,
         assistant_name=setting.assistant_name or "askai",
         assistant_avatar_set=bool(setting.assistant_avatar),
+        system_prompt=setting.system_prompt or "",
     )
+
 
 @router.get("/theme")
 def admin_get_theme(
@@ -112,6 +137,7 @@ def admin_get_theme(
     db: Session = Depends(get_db),
 ):
     return {"theme": get_setting(db).theme}
+
 
 @router.put("/theme")
 def admin_save_theme(
@@ -125,12 +151,14 @@ def admin_save_theme(
     db.refresh(setting)
     return {"theme": setting.theme}
 
+
 @router.get("/debug")
 def admin_get_debug(
     admin: models.Admin = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     return {"debug_mode": bool(get_setting(db).debug_mode)}
+
 
 @router.put("/debug")
 def admin_save_debug(
@@ -144,6 +172,7 @@ def admin_save_debug(
     db.refresh(setting)
     return {"debug_mode": bool(setting.debug_mode)}
 
+
 @router.get("/access")
 def admin_access(r: str = "", db: Session = Depends(get_db)):
     setting = get_setting(db)
@@ -151,6 +180,7 @@ def admin_access(r: str = "", db: Session = Depends(get_db)):
         if r != setting.admin_secret:
             raise HTTPException(status_code=404, detail="页面不存在")
     return {"ok": True}
+
 
 @router.post("/favicon")
 async def upload_favicon(
@@ -184,6 +214,7 @@ async def upload_favicon(
     db.commit()
     return {"favicon_set": True, "url": "/api/favicon"}
 
+
 @router.delete("/favicon")
 def delete_favicon(
     admin: models.Admin = Depends(get_current_admin),
@@ -200,6 +231,7 @@ def delete_favicon(
         setting.favicon_path = ""
         db.commit()
     return {"favicon_set": False}
+
 
 @router.post("/assistant-avatar")
 async def upload_assistant_avatar(
@@ -233,6 +265,7 @@ async def upload_assistant_avatar(
     db.commit()
     return {"assistant_avatar_set": True, "url": "/api/assistant-avatar"}
 
+
 @router.delete("/assistant-avatar")
 def delete_assistant_avatar(
     admin: models.Admin = Depends(get_current_admin),
@@ -250,6 +283,7 @@ def delete_assistant_avatar(
         db.commit()
     return {"assistant_avatar_set": False}
 
+
 @router.get("/logo")
 def logo_status(
     admin: models.Admin = Depends(get_current_admin),
@@ -257,6 +291,7 @@ def logo_status(
 ):
     setting = get_setting(db)
     return {"logo_set": bool(setting.logo_path)}
+
 
 @router.post("/logo")
 async def upload_logo(
@@ -290,6 +325,7 @@ async def upload_logo(
     db.commit()
     return {"logo_set": True, "url": "/api/logo"}
 
+
 @router.delete("/logo")
 def delete_logo(
     admin: models.Admin = Depends(get_current_admin),
@@ -306,6 +342,7 @@ def delete_logo(
         setting.logo_path = ""
         db.commit()
     return {"logo_set": False}
+
 
 @router.put("/password")
 def change_password(

@@ -19,7 +19,15 @@ from app.database import get_db
 from app.security import hash_password, verify_password
 
 router = APIRouter()
-__all__ = ["get_dingtalk", "get_feishu", "get_wecom", "update_dingtalk", "update_feishu", "update_wecom"]
+__all__ = [
+    "get_dingtalk",
+    "get_feishu",
+    "get_wecom",
+    "update_dingtalk",
+    "update_feishu",
+    "update_wecom",
+]
+
 
 @router.get("/wecom", response_model=schemas.WecomOut)
 def get_wecom(
@@ -32,7 +40,9 @@ def get_wecom(
         wecom_agent_id=setting.wecom_agent_id,
         wecom_redirect=setting.wecom_redirect,
         wecom_secret_set=bool(setting.wecom_secret),
+        system_prompt=setting.wecom_system_prompt,
     )
+
 
 @router.put("/wecom", response_model=schemas.WecomOut)
 def update_wecom(
@@ -49,6 +59,8 @@ def update_wecom(
         setting.wecom_agent_id = payload.wecom_agent_id
     if payload.wecom_redirect is not None:
         setting.wecom_redirect = payload.wecom_redirect
+    if payload.system_prompt is not None:
+        setting.wecom_system_prompt = payload.system_prompt
     db.commit()
     db.refresh(setting)
     return schemas.WecomOut(
@@ -56,7 +68,9 @@ def update_wecom(
         wecom_agent_id=setting.wecom_agent_id,
         wecom_redirect=setting.wecom_redirect,
         wecom_secret_set=bool(setting.wecom_secret),
+        system_prompt=setting.wecom_system_prompt,
     )
+
 
 def _dingtalk_out(setting: models.Setting) -> schemas.DingtalkOut:
     return schemas.DingtalkOut(
@@ -64,7 +78,9 @@ def _dingtalk_out(setting: models.Setting) -> schemas.DingtalkOut:
         agent_id=setting.dingtalk_agent_id or "",
         redirect=setting.dingtalk_redirect or "",
         app_secret_set=bool(setting.dingtalk_app_secret),
+        system_prompt=setting.dingtalk_system_prompt,
     )
+
 
 @router.get("/dingtalk", response_model=schemas.DingtalkOut)
 def get_dingtalk(
@@ -72,6 +88,7 @@ def get_dingtalk(
     db: Session = Depends(get_db),
 ):
     return _dingtalk_out(get_setting(db))
+
 
 @router.put("/dingtalk", response_model=schemas.DingtalkOut)
 def update_dingtalk(
@@ -88,16 +105,21 @@ def update_dingtalk(
         setting.dingtalk_agent_id = payload.agent_id
     if payload.redirect is not None:
         setting.dingtalk_redirect = payload.redirect
+    if payload.system_prompt is not None:
+        setting.dingtalk_system_prompt = payload.system_prompt
     db.commit()
     db.refresh(setting)
     return _dingtalk_out(setting)
+
 
 def _feishu_out(setting: models.Setting) -> schemas.FeishuOut:
     return schemas.FeishuOut(
         app_id=setting.feishu_app_id or "",
         redirect=setting.feishu_redirect or "",
         app_secret_set=bool(setting.feishu_app_secret),
+        system_prompt=setting.feishu_system_prompt,
     )
+
 
 @router.get("/feishu", response_model=schemas.FeishuOut)
 def get_feishu(
@@ -105,6 +127,7 @@ def get_feishu(
     db: Session = Depends(get_db),
 ):
     return _feishu_out(get_setting(db))
+
 
 @router.put("/feishu", response_model=schemas.FeishuOut)
 def update_feishu(
@@ -119,6 +142,8 @@ def update_feishu(
         setting.feishu_app_secret = payload.app_secret
     if payload.redirect is not None:
         setting.feishu_redirect = payload.redirect
+    if payload.system_prompt is not None:
+        setting.feishu_system_prompt = payload.system_prompt
     db.commit()
     db.refresh(setting)
     return _feishu_out(setting)

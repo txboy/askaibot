@@ -15,6 +15,7 @@ class ApiEndpoint(Base):
     base_url: Mapped[str] = mapped_column(String)
     api_key: Mapped[str] = mapped_column(String, default="")
     models: Mapped[str] = mapped_column(Text, default="")  # 逗号/换行分隔的模型列表
+    system_prompt: Mapped[str] = mapped_column(Text, default="")
     enabled: Mapped[int] = mapped_column(Integer, default=1)
     is_default: Mapped[int] = mapped_column(Integer, default=0)
     scope: Mapped[str] = mapped_column(String, default="global")  # global / group

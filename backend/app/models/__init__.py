@@ -11,6 +11,7 @@ from .mcp_server import McpServer
 from .api_endpoint import ApiEndpoint
 from .skill import Skill, SkillAccess
 from .user_group import UserGroup, UserGroupMember, GroupGrant
+from .bot_event import BotEvent
 
 __all__ = [
     "Base",
@@ -29,4 +30,5 @@ __all__ = [
     "UserGroup",
     "UserGroupMember",
     "GroupGrant",
+    "BotEvent",
 ]

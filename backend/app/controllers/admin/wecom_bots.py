@@ -19,7 +19,13 @@ from app.database import get_db
 from app.security import hash_password, verify_password
 
 router = APIRouter()
-__all__ = ["create_wecom_bot", "delete_wecom_bot", "list_wecom_bots", "update_wecom_bot"]
+__all__ = [
+    "create_wecom_bot",
+    "delete_wecom_bot",
+    "list_wecom_bots",
+    "update_wecom_bot",
+]
+
 
 def _bot_callback_url(db: Session, bot_id: int, provider: str = "wecom") -> str:
     if provider == "dingtalk":
@@ -30,6 +36,7 @@ def _bot_callback_url(db: Session, bot_id: int, provider: str = "wecom") -> str:
         return f"{base}/api/feishu/bot/{bot_id}/callback"
     base = (get_setting(db).wecom_redirect or config.frontend_url).rstrip("/")
     return f"{base}/api/wecom/bot/{bot_id}/callback"
+
 
 def _bot_out(bot: models.WecomBot, db: Session) -> schemas.WecomBotOut:
     return schemas.WecomBotOut(
@@ -48,7 +55,9 @@ def _bot_out(bot: models.WecomBot, db: Session) -> schemas.WecomBotOut:
         model=bot.model,
         enabled=bot.enabled,
         callback_url=_bot_callback_url(db, bot.id, bot.provider),
+        system_prompt=bot.system_prompt,
     )
+
 
 @router.get("/wecom-bots", response_model=list[schemas.WecomBotOut])
 def list_wecom_bots(
@@ -60,6 +69,7 @@ def list_wecom_bots(
     if provider:
         q = q.filter(models.WecomBot.provider == provider)
     return [_bot_out(b, db) for b in q.all()]
+
 
 @router.post("/wecom-bots", response_model=schemas.WecomBotOut)
 def create_wecom_bot(
@@ -81,11 +91,13 @@ def create_wecom_bot(
         endpoint_id=payload.endpoint_id,
         model=payload.model or "",
         enabled=payload.enabled or 1,
+        system_prompt=payload.system_prompt or "",
     )
     db.add(bot)
     db.commit()
     db.refresh(bot)
     return _bot_out(bot, db)
+
 
 @router.put("/wecom-bots/{bot_id}", response_model=schemas.WecomBotOut)
 def update_wecom_bot(
@@ -107,6 +119,7 @@ def update_wecom_bot(
         "kb_ids",
         "mcp_ids",
         "model",
+        "system_prompt",
     ):
         val = getattr(payload, field)
         if val is not None:
@@ -122,6 +135,7 @@ def update_wecom_bot(
     db.commit()
     db.refresh(bot)
     return _bot_out(bot, db)
+
 
 @router.delete("/wecom-bots/{bot_id}")
 def delete_wecom_bot(

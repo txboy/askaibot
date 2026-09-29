@@ -17,6 +17,41 @@ def get_setting(db: Session) -> models.Setting:
     return setting
 
 
+def resolve_system_prompt(
+    db: Session,
+    bot: models.WecomBot | None = None,
+    endpoint: models.ApiEndpoint | None = None,
+    provider: str | None = None,
+) -> str:
+    """按 机器人 > 基础配置(按平台) > 模型接口 > 通用 的优先级返回系统提示词。"""
+    setting = get_setting(db)
+    if bot and bot.system_prompt:
+        return bot.system_prompt
+    prov = provider or (bot.provider if bot else None)
+    if prov == "wecom" and setting.wecom_system_prompt:
+        return setting.wecom_system_prompt
+    if prov == "dingtalk" and setting.dingtalk_system_prompt:
+        return setting.dingtalk_system_prompt
+    if prov == "feishu" and setting.feishu_system_prompt:
+        return setting.feishu_system_prompt
+    if endpoint and endpoint.system_prompt:
+        return endpoint.system_prompt
+    return setting.system_prompt or ""
+
+
+def user_platform(user: models.User | None) -> str:
+    """根据用户注册平台返回 provider（feishu/dingtalk/wecom），普通用户返回空串。"""
+    if not user:
+        return ""
+    if user.feishu_userid:
+        return "feishu"
+    if user.dingtalk_userid:
+        return "dingtalk"
+    if user.wecom_userid:
+        return "wecom"
+    return ""
+
+
 def mask_key(api_key: str) -> str:
     if not api_key:
         return ""

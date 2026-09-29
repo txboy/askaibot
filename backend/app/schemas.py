@@ -143,6 +143,7 @@ class EndpointCreate(BaseModel):
     enabled: Optional[int] = 1
     is_default: Optional[int] = 0
     scope: Optional[str] = "global"  # global / group
+    system_prompt: Optional[str] = ""
 
 
 class EndpointUpdate(BaseModel):
@@ -153,6 +154,7 @@ class EndpointUpdate(BaseModel):
     enabled: Optional[int] = None
     is_default: Optional[int] = None
     scope: Optional[str] = None
+    system_prompt: Optional[str] = None
     group_ids: Optional[list[int]] = None
 
 
@@ -165,6 +167,7 @@ class EndpointOut(BaseModel):
     enabled: int
     is_default: int
     scope: str = "global"
+    system_prompt: str = ""
     group_ids: list[int] = []
 
     class Config:
@@ -184,6 +187,7 @@ class WecomOut(BaseModel):
     wecom_agent_id: str
     wecom_redirect: str
     wecom_secret_set: bool
+    system_prompt: str = ""
 
 
 class WecomUpdate(BaseModel):
@@ -191,6 +195,7 @@ class WecomUpdate(BaseModel):
     wecom_secret: Optional[str] = None
     wecom_agent_id: Optional[str] = None
     wecom_redirect: Optional[str] = None
+    system_prompt: Optional[str] = None
 
 
 class DingtalkOut(BaseModel):
@@ -198,6 +203,7 @@ class DingtalkOut(BaseModel):
     agent_id: str
     redirect: str
     app_secret_set: bool
+    system_prompt: str = ""
 
 
 class DingtalkUpdate(BaseModel):
@@ -205,18 +211,21 @@ class DingtalkUpdate(BaseModel):
     app_secret: Optional[str] = None
     agent_id: Optional[str] = None
     redirect: Optional[str] = None
+    system_prompt: Optional[str] = None
 
 
 class FeishuOut(BaseModel):
     app_id: str
     redirect: str
     app_secret_set: bool
+    system_prompt: str = ""
 
 
 class FeishuUpdate(BaseModel):
     app_id: Optional[str] = None
     app_secret: Optional[str] = None
     redirect: Optional[str] = None
+    system_prompt: Optional[str] = None
 
 
 class AdminPasswordChange(BaseModel):
@@ -241,6 +250,7 @@ class SystemOut(BaseModel):
     admin_secret: str
     assistant_name: str
     assistant_avatar_set: bool
+    system_prompt: str = ""
 
 
 class SystemUpdate(BaseModel):
@@ -248,6 +258,7 @@ class SystemUpdate(BaseModel):
     admin_secret_enabled: Optional[bool] = None
     admin_secret: Optional[str] = None
     assistant_name: Optional[str] = None
+    system_prompt: Optional[str] = None
 
 
 class SmsOut(BaseModel):
@@ -384,6 +395,7 @@ class WecomBotCreate(BaseModel):
     endpoint_id: Optional[int] = None
     model: Optional[str] = ""
     enabled: Optional[int] = 1
+    system_prompt: Optional[str] = ""
 
 
 class WecomBotUpdate(BaseModel):
@@ -401,6 +413,7 @@ class WecomBotUpdate(BaseModel):
     endpoint_id: Optional[int] = None
     model: Optional[str] = None
     enabled: Optional[int] = None
+    system_prompt: Optional[str] = None
 
 
 class WecomBotOut(BaseModel):
@@ -419,6 +432,7 @@ class WecomBotOut(BaseModel):
     model: str
     enabled: int
     callback_url: str
+    system_prompt: str = ""
 
     class Config:
         from_attributes = True

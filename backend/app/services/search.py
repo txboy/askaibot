@@ -3,6 +3,27 @@
 import httpx
 
 
+def build_web_search_tool() -> dict:
+    """构造 web_search 函数工具定义，用于让模型发起联网搜索。"""
+    return {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "联网搜索获取实时或最新信息，用于回答需要外部知识或最新数据的问题。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "要搜索的关键词或完整问题",
+                    }
+                },
+                "required": ["query"],
+            },
+        },
+    }
+
+
 async def search_web(
     provider: str,
     api_key: str,
