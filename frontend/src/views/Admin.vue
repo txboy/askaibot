@@ -34,35 +34,74 @@ const active = ref('dashboard')
 const isAdmin = () => !!store.adminToken
 const isSuper = computed(() => store.adminRole === 'super')
 
-const superNav = [
-  { key: 'dashboard', label: '首页' },
-  { key: 'users', label: '用户列表' },
-  { key: 'departments', label: '部门管理' },
-  { key: 'admins', label: '管理员' },
-  { key: 'groups', label: '用户组' },
-  { key: 'agreement', label: '协议管理' },
-  { key: 'endpoints', label: '接口设置' },
-  { key: 'sms', label: '短信接口' },
-  { key: 'search', label: '联网搜索' },
-  { key: 'mcp', label: 'MCP 工具' },
-  { key: 'skill', label: '技能包' },
-  { key: 'knowledge', label: '知识库' },
-  { key: 'wecom', label: '企微设置' },
-  { key: 'dingtalk', label: '钉钉设置' },
-  { key: 'feishu', label: '飞书设置' },
-  { key: 'system', label: '系统设置' },
-  { key: 'database', label: '数据库' },
-  { key: 'audit', label: '审计日志' },
-  { key: 'password', label: '修改密码' },
+const homeNav = { key: 'dashboard', label: '首页', icon: 'house' }
+
+const superGroups = [
+  {
+    key: 'org',
+    label: '用户管理',
+    icon: 'users',
+    children: [
+      { key: 'users', label: '用户列表', icon: 'user' },
+      { key: 'departments', label: '部门管理', icon: 'sitemap' },
+      { key: 'admins', label: '管理员', icon: 'user-shield' },
+      { key: 'groups', label: '用户组', icon: 'users' },
+      { key: 'password', label: '修改密码', icon: 'lock' },
+    ],
+  },
+  {
+    key: 'capability',
+    label: '工具接入',
+    icon: 'wand-magic-sparkles',
+    children: [
+      { key: 'endpoints', label: '接口设置', icon: 'plug' },
+      { key: 'sms', label: '短信接口', icon: 'sms' },
+      { key: 'search', label: '联网搜索', icon: 'magnifying-glass' },
+      { key: 'mcp', label: 'MCP 工具', icon: 'server' },
+      { key: 'skill', label: '技能包', icon: 'wand-magic-sparkles' },
+      { key: 'knowledge', label: '知识库', icon: 'book' },
+    ],
+  },
+  {
+    key: 'channel',
+    label: '渠道接入',
+    icon: 'share-nodes',
+    children: [
+      { key: 'wecom', label: '企微设置', icon: 'comment' },
+      { key: 'dingtalk', label: '钉钉设置', icon: 'robot' },
+      { key: 'feishu', label: '飞书设置', icon: 'comments' },
+    ],
+  },
+  {
+    key: 'system',
+    label: '系统管理',
+    icon: 'gear',
+    children: [
+      { key: 'system', label: '系统设置', icon: 'sliders' },
+      { key: 'database', label: '数据库', icon: 'database' },
+      { key: 'audit', label: '审计日志', icon: 'file-lines' },
+      { key: 'agreement', label: '协议管理', icon: 'file-signature' },
+    ],
+  },
 ]
 
 const deptNav = [
-  { key: 'users', label: '本部门用户' },
-  { key: 'dept-stats', label: '本部门用量' },
-  { key: 'password', label: '修改密码' },
+  { key: 'users', label: '本部门用户', icon: 'user' },
+  { key: 'dept-stats', label: '本部门用量', icon: 'chart-line' },
+  { key: 'password', label: '修改密码', icon: 'lock' },
 ]
 
-const navItems = computed(() => (store.adminRole === 'dept' ? deptNav : superNav))
+const isDept = computed(() => store.adminRole === 'dept')
+
+const openGroups = ref([])
+
+function toggleGroup(key) {
+  openGroups.value = openGroups.value.includes(key) ? [] : [key]
+}
+
+function groupOf(key) {
+  return superGroups.find((g) => g.children.some((c) => c.key === key))
+}
 
 const sectionMap = {
   dashboard: AdminDashboard,
@@ -91,6 +130,10 @@ const currentSection = computed(() => sectionMap[active.value] || AdminPassword)
 
 function selectSection(key) {
   active.value = key
+  const g = groupOf(key)
+  if (g) {
+    openGroups.value = [g.key]
+  }
 }
 
 async function loadMe() {
@@ -144,15 +187,51 @@ function logout() {
       <aside class="admin-side">
         <div class="side-head"><Logo class="side-logo" /></div>
         <nav class="nav">
-          <button
-            v-for="n in navItems"
-            :key="n.key"
-            class="nav-item"
-            :class="{ active: active === n.key }"
-            @click="selectSection(n.key)"
-          >
-            {{ n.label }}
-          </button>
+          <template v-if="isDept">
+            <button
+              v-for="n in deptNav"
+              :key="n.key"
+              class="nav-item"
+              :class="{ active: active === n.key }"
+              @click="selectSection(n.key)"
+            >
+              <font-awesome-icon :icon="n.icon" class="nav-ic" />
+              {{ n.label }}
+            </button>
+          </template>
+          <template v-else>
+            <button
+              class="nav-item"
+              :class="{ active: active === homeNav.key }"
+              @click="selectSection(homeNav.key)"
+            >
+              <font-awesome-icon :icon="homeNav.icon" class="nav-ic" />
+              {{ homeNav.label }}
+            </button>
+            <div v-for="g in superGroups" :key="g.key" class="nav-group">
+              <button
+                class="nav-group-head"
+                :class="{ open: openGroups.includes(g.key) }"
+                @click="toggleGroup(g.key)"
+              >
+                <font-awesome-icon :icon="g.icon" class="nav-ic" />
+                <span class="group-label">{{ g.label }}</span>
+                <font-awesome-icon icon="chevron-down" class="chev" />
+              </button>
+              <template v-if="openGroups.includes(g.key)">
+                <button
+                  v-for="c in g.children"
+                  :key="c.key"
+                  class="nav-item sub"
+                  :class="{ active: active === c.key }"
+                  @click="selectSection(c.key)"
+                >
+                  <font-awesome-icon :icon="c.icon" class="nav-ic" />
+                  {{ c.label }}
+                </button>
+              </template>
+            </div>
+          </template>
         </nav>
         <div class="side-foot">
           <button class="nav-item" @click="logout">退出登录</button>
@@ -231,7 +310,8 @@ function logout() {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
+  padding-top: 6px;
 }
 
 .nav-item {
@@ -240,6 +320,7 @@ function logout() {
   border-radius: 8px;
   color: var(--text-muted);
   text-decoration: none;
+  font-size: 15px;
   transition: background 0.15s, color 0.15s;
 }
 
@@ -251,6 +332,59 @@ function logout() {
 .nav-item.active {
   background: var(--primary);
   color: #fff;
+}
+
+.nav-ic {
+  width: 14px;
+  margin-right: 8px;
+  text-align: center;
+}
+
+.nav-item.sub {
+  padding-left: 32px;
+  font-size: 14px;
+}
+
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.nav-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 15px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.nav-group-head:hover {
+  background: var(--primary-soft);
+  color: var(--text);
+}
+
+.nav-group-head .group-label {
+  flex: 1;
+}
+
+.nav-group-head .chev {
+  font-size: 11px;
+  transition: transform 0.2s ease;
+  color: var(--text-muted);
+}
+
+.nav-group-head.open .chev {
+  transform: rotate(180deg);
 }
 
 .side-foot {
