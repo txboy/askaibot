@@ -51,11 +51,7 @@ def _dependency_order(metadata) -> list[str]:
     order: list[str] = []
     remaining = {name for name in deps}
     while remaining:
-        ready = [
-            name
-            for name in remaining
-            if not (deps[name] & remaining)
-        ]
+        ready = [name for name in remaining if not (deps[name] & remaining)]
         if not ready:
             ready = [next(iter(remaining))]
         for name in ready:
@@ -94,12 +90,19 @@ def _reset_oracle_sequences(target_conn, metadata, oracle_dialect) -> None:
 
 def _table_has_rows(target_conn, table) -> bool:
     try:
-        return bool(target_conn.execute(select(func.count()).select_from(table)).scalar())
+        return bool(
+            target_conn.execute(select(func.count()).select_from(table)).scalar()
+        )
     except Exception:
         return False
 
 
-def migrate(cfg: dict, override: bool = False, backup: bool = True, src_engine: Engine | None = None) -> dict:
+def migrate(
+    cfg: dict,
+    override: bool = False,
+    backup: bool = True,
+    src_engine: Engine | None = None,
+) -> dict:
     """把当前库数据迁移到目标库（cfg），返回描述信息。
 
     不改动当前在线的源 engine；调用方负责后续持久化与热切换。
@@ -113,7 +116,11 @@ def migrate(cfg: dict, override: bool = False, backup: bool = True, src_engine: 
     target_url, dialect = db_service.build_url(cfg)
     target_engine = db_service.create_engine(target_url)
 
-    result = {"ok": False, "target_url_redacted": _redact_url(target_url), "dialect": dialect}
+    result = {
+        "ok": False,
+        "target_url_redacted": _redact_url(target_url),
+        "dialect": dialect,
+    }
 
     # 备份（可选）
     bk = None
@@ -128,20 +135,22 @@ def migrate(cfg: dict, override: bool = False, backup: bool = True, src_engine: 
 
     with src_engine.connect() as src_conn:
         with target_engine.connect() as target_conn:
-            # 覆盖模式：清空目标库重建
-            if override:
-                Base.metadata.drop_all(target_engine)
-                Base.metadata.create_all(target_engine)
-            else:
-                Base.metadata.create_all(target_engine)
-                existing = set(insp.get_table_names())
-                for table_name in (existing & set(metadata.tables.keys())):
-                    if _table_has_rows(target_conn, metadata.tables[table_name]):
-                        result["message"] = f"目标库已存在非空表 {table_name}，需确认覆盖"
-                        result["backup"] = bk
-                        return result
-
             try:
+                # 覆盖模式：清空目标库重建
+                if override:
+                    Base.metadata.drop_all(target_engine)
+                    Base.metadata.create_all(target_engine)
+                else:
+                    Base.metadata.create_all(target_engine)
+                    existing = set(insp.get_table_names())
+                    for table_name in existing & set(metadata.tables.keys()):
+                        if _table_has_rows(target_conn, metadata.tables[table_name]):
+                            result["message"] = (
+                                f"目标库已存在非空表 {table_name}，需确认覆盖"
+                            )
+                            result["backup"] = bk
+                            return result
+
                 for table_name in _dependency_order(metadata):
                     table = metadata.tables[table_name]
                     rows = src_conn.execute(select(table)).mappings().all()

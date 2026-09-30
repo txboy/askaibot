@@ -4,19 +4,20 @@ from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
+from .types import OrEmptyStr
 from ..database import Base
 
 
 class McpServer(Base):
     __tablename__ = "mcp_servers"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(500))
-    description: Mapped[str] = mapped_column(String(500), default="")
+    description: Mapped[str] = mapped_column(OrEmptyStr(500), default="", nullable=True)
     transport: Mapped[str] = mapped_column(String(500), default="http")  # http / stdio
-    url: Mapped[str] = mapped_column(String(500), default="")
+    url: Mapped[str] = mapped_column(OrEmptyStr(500), default="", nullable=True)
     headers: Mapped[str] = mapped_column(Text, default="{}")  # JSON
-    command: Mapped[str] = mapped_column(String(500), default="")
+    command: Mapped[str] = mapped_column(OrEmptyStr(500), default="", nullable=True)
     args: Mapped[str] = mapped_column(Text, default="[]")  # JSON
     env: Mapped[str] = mapped_column(Text, default="{}")  # JSON
     mode: Mapped[str] = mapped_column(String(500), default="llm")  # llm / frontend

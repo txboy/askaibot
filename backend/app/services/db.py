@@ -54,7 +54,7 @@ def build_url(cfg: dict) -> tuple[str, str]:
     if dtype not in DIALECT_DRIVER:
         raise ValueError(f"不支持的数据库类型：{dtype}")
     if dtype == "sqlite":
-        path = (cfg.get("path") or cfg.get("sqlite_path") or "./app.db").strip()
+        path = (cfg.get("path") or cfg.get("sqlite_path") or "./data/app.db").strip()
         url = f"sqlite:///{path}"
         return url, dtype
     host = (cfg.get("host") or "").strip()
@@ -71,7 +71,16 @@ def build_url(cfg: dict) -> tuple[str, str]:
     hostport = host
     if host and port:
         hostport = f"{host}:{port}"
-    url = f"{driver}://{auth}{hostport}/{database}"
+    if dtype == "oracle":
+        # Oracle 的 PDB 以 service_name 注册，URL 路径会被当作 SID 导致
+        # ORA-12505，故将 database 作为 service_name 查询参数传入。
+        url = (
+            f"{driver}://{auth}{hostport}/?service_name={quote(database)}"
+            if database
+            else f"{driver}://{auth}{hostport}/"
+        )
+    else:
+        url = f"{driver}://{auth}{hostport}/{database}"
     return url, dtype
 
 
@@ -87,6 +96,13 @@ def build_connect_args(url: str) -> dict:
 
 def create_engine(url: str) -> Engine:
     """创建 SQLAlchemy engine（惰性连接）。"""
+    if url.startswith("sqlite") and ":memory:" not in url:
+        # 确保 SQLite 文件的父目录存在（如 ./data/），避免连接失败。
+        import os
+
+        db_path = url.split("sqlite:///", 1)[-1]
+        if db_path:
+            os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
     return sa_create_engine(
         url,
         connect_args=build_connect_args(url),
@@ -116,7 +132,7 @@ def test_connection(cfg: dict) -> dict:
         # SQLite 本地文件仅验证可写路径
         import os
 
-        path = (cfg.get("path") or cfg.get("sqlite_path") or "./app.db").strip()
+        path = (cfg.get("path") or cfg.get("sqlite_path") or "./data/app.db").strip()
         try:
             if path != ":memory:":
                 parent = os.path.dirname(os.path.abspath(path)) or "."
@@ -124,7 +140,11 @@ def test_connection(cfg: dict) -> dict:
                 with open(path, "a"):
                     pass
         except Exception as exc:
-            return {"ok": False, "message": f"SQLite 路径不可写：{exc}", "dialect": dtype}
+            return {
+                "ok": False,
+                "message": f"SQLite 路径不可写：{exc}",
+                "dialect": dtype,
+            }
         return {"ok": True, "message": "SQLite 路径有效", "dialect": dtype}
     try:
         engine = create_engine(url)
@@ -161,7 +181,7 @@ def describe(dialect: str, cfg: dict | None = None) -> dict:
     """构造当前库的描述信息（脱敏）。"""
     cfg = cfg or {}
     if dialect == "sqlite":
-        path = cfg.get("path") or cfg.get("sqlite_path") or "./app.db"
+        path = cfg.get("path") or cfg.get("sqlite_path") or "./data/app.db"
         return {"type": "sqlite", "database": path, "host": "", "port": ""}
     host = (cfg.get("host") or "").strip()
     port = (cfg.get("port") or "").strip()

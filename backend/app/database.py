@@ -14,7 +14,7 @@ _SessionLocal = None
 
 
 def _default_url() -> str:
-    return os.getenv("DATABASE_URL", "sqlite:///./app.db")
+    return os.getenv("DATABASE_URL", "sqlite:///./data/app.db")
 
 
 def resolve_config() -> dict | None:

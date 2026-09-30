@@ -5,7 +5,7 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# 供沙箱执行技能代码调用宿主 docker（挂载 docker.sock）—— 通过 Python docker SDK，无需安装 docker CLI
+# 无需安装 docker CLI / SDK，技能在本地软沙箱中执行
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -17,10 +17,7 @@ ENV DATABASE_URL=sqlite:////app/data/app.db \
     UPLOAD_DIR=/app/data/uploads \
     DB_CONFIG_FILE=/app/data/db_config.json \
     FRONTEND_URL=http://localhost \
-    SKILL_SANDBOX=auto \
-    SKILL_RUNNER_IMAGE=askai-skill-runner \
-    SKILL_DATA_VOLUME=app_data \
-    SKILL_DATA_MOUNT=/app/data
+    SKILL_TIMEOUT=60
 
 EXPOSE 8000
 

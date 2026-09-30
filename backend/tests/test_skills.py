@@ -128,7 +128,6 @@ class _FakeProc:
 
 
 def test_call_tool_local_stdin(monkeypatch, tmp_path):
-    monkeypatch.setattr(skill_core.config, "skill_sandbox", "local")
     captured = {}
 
     def fake_run(cmd, **kwargs):
@@ -150,8 +149,6 @@ def test_call_tool_local_stdin(monkeypatch, tmp_path):
 
 
 def test_call_tool_local_error(monkeypatch, tmp_path):
-    monkeypatch.setattr(skill_core.config, "skill_sandbox", "local")
-
     def fake_run(cmd, **kwargs):
         return _FakeProc(2, "", "boom")
 
@@ -160,143 +157,6 @@ def test_call_tool_local_error(monkeypatch, tmp_path):
     out = asyncio.run(skill_core.call_tool(skill, {"command": "python x"}, {}))
     assert "退出码 2" in out
     assert "boom" in out
-
-
-# ---------- 调用（Docker SDK 路径）----------
-
-
-def _install_fake_docker(
-    monkeypatch, *, rc=0, out=b"", err=b"", wait_error=False, sent=None, created=None
-):
-    import sys
-    import types
-
-    if sent is None:
-        sent = []
-    if created is None:
-        created = {}
-
-    class FakeSocket:
-        def __init__(self):
-            self.shutdown_called = False
-
-        def sendall(self, data):
-            sent.append(data)
-
-        def shutdown(self, how):
-            self.shutdown_called = True
-
-        def close(self):
-            pass
-
-    class FakeContainer:
-        id = "cid123"
-
-        def __init__(self):
-            self.removed = False
-            self.started = False
-
-        def start(self):
-            self.started = True
-
-        def wait(self, timeout=None, condition=None):
-            if wait_error:
-                raise TimeoutError("read timeout")
-            return {"StatusCode": rc}
-
-        def logs(self, stdout=True, stderr=False):
-            return out if stdout else err
-
-        def remove(self, force=False):
-            self.removed = True
-
-    class FakeContainers:
-        def __init__(self):
-            self.container = FakeContainer()
-
-        def create(self, image, command=None, **kwargs):
-            created["image"] = image
-            created["command"] = command
-            created.update(kwargs)
-            return self.container
-
-    class FakeApi:
-        def attach_socket(self, cid, params=None):
-            return FakeSocket()
-
-    class FakeClient:
-        def __init__(self):
-            self.containers = FakeContainers()
-            self.api = FakeApi()
-
-    fake = types.ModuleType("docker")
-    setattr(fake, "from_env", lambda: FakeClient())
-    monkeypatch.setitem(sys.modules, "docker", fake)
-    return fake
-
-
-def test_call_tool_docker_sdk(monkeypatch, tmp_path):
-    sent, created = [], {}
-    _install_fake_docker(monkeypatch, out=b"lint:3\n", sent=sent, created=created)
-    monkeypatch.setattr(skill_core.config, "skill_sandbox", "docker")
-    monkeypatch.setattr(skill_core.config, "upload_dir", str(tmp_path.parent))
-    skill = models.Skill(id=1, name="s", dir_path=str(tmp_path))
-    out = asyncio.run(
-        skill_core.call_tool(
-            skill, {"command": "python tools/lint.py"}, {"file": "a.py"}
-        )
-    )
-    assert out == "lint:3"
-    assert created["image"] == config.skill_runner_image
-    assert created["command"] == ["sh", "-c", "python tools/lint.py"]
-    assert created["working_dir"].startswith(config.skill_data_mount.rstrip("/"))
-    assert created["volumes"][config.skill_data_volume]["mode"] == "ro"
-    assert created["stdin_open"] is True
-    assert json.loads(sent[0]) == {"file": "a.py"}
-
-
-def test_call_tool_docker_timeout(monkeypatch, tmp_path):
-    sent, created = [], {}
-    _install_fake_docker(monkeypatch, wait_error=True, sent=sent, created=created)
-    monkeypatch.setattr(skill_core.config, "skill_sandbox", "docker")
-    monkeypatch.setattr(skill_core.config, "upload_dir", str(tmp_path.parent))
-    skill = models.Skill(id=1, name="s", dir_path=str(tmp_path))
-    out = asyncio.run(skill_core.call_tool(skill, {"command": "python x"}, {}))
-    assert "超时" in out
-
-
-def test_call_tool_docker_error(monkeypatch, tmp_path):
-    sent, created = [], {}
-    _install_fake_docker(monkeypatch, rc=2, err=b"boom", sent=sent, created=created)
-    monkeypatch.setattr(skill_core.config, "skill_sandbox", "docker")
-    monkeypatch.setattr(skill_core.config, "upload_dir", str(tmp_path.parent))
-    skill = models.Skill(id=1, name="s", dir_path=str(tmp_path))
-    out = asyncio.run(skill_core.call_tool(skill, {"command": "python x"}, {}))
-    assert "退出码 2" in out
-    assert "boom" in out
-
-
-def test_call_tool_docker_unavailable_falls_back(monkeypatch, tmp_path):
-    sent, created = [], {}
-    _install_fake_docker(monkeypatch, sent=sent, created=created)
-
-    def raise_from_env():
-        raise RuntimeError("daemon unreachable")
-
-    import sys
-
-    setattr(sys.modules["docker"], "from_env", raise_from_env)
-    monkeypatch.setattr(skill_core.config, "skill_sandbox", "auto")
-    captured = {}
-
-    def fake_run(cmd, **kwargs):
-        captured["input"] = kwargs.get("input")
-        return _FakeProc(0, "local:ok")
-
-    monkeypatch.setattr(skill_core.subprocess, "run", fake_run)
-    skill = models.Skill(id=1, name="s", dir_path=str(tmp_path))
-    out = asyncio.run(skill_core.call_tool(skill, {"command": "python x"}, {"k": 1}))
-    assert out == "local:ok"
 
 
 # ---------- 可见性/权限 ----------

@@ -1,21 +1,22 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
+from .types import OrEmptyStr, OrEmptyText
 from ..database import Base
 
 
 class ApiEndpoint(Base):
     __tablename__ = "api_endpoints"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(500))
     base_url: Mapped[str] = mapped_column(String(500))
-    api_key: Mapped[str] = mapped_column(String(500), default="")
-    models: Mapped[str] = mapped_column(Text, default="")  # 逗号/换行分隔的模型列表
-    system_prompt: Mapped[str] = mapped_column(Text, default="")
+    api_key: Mapped[str] = mapped_column(OrEmptyStr(500), default="", nullable=True)
+    models: Mapped[str] = mapped_column(OrEmptyText(), default="", nullable=True)  # 逗号/换行分隔的模型列表
+    system_prompt: Mapped[str] = mapped_column(OrEmptyText(), default="", nullable=True)
     enabled: Mapped[int] = mapped_column(Integer, default=1)
     is_default: Mapped[int] = mapped_column(Integer, default=0)
     scope: Mapped[str] = mapped_column(String(500), default="global")  # global / group
