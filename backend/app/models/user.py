@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, Integer, String, text
+from sqlalchemy import Identity, DateTime, Index, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -11,7 +11,7 @@ from ..database import Base
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, Identity(), primary_key=True)
     nickname: Mapped[str] = mapped_column(String(500), default="用户")
     avatar: Mapped[str] = mapped_column(OrEmptyStr(500), default="", nullable=True)
     assistant_name: Mapped[str] = mapped_column(OrEmptyStr(500), default="", nullable=True)

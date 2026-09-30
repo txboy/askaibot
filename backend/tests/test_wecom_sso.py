@@ -8,6 +8,10 @@ import app.controllers.frontend.auth as auth_mod
 from app.controllers.frontend.auth import wecom_callback, wecom_oauth
 
 
+class _Req:
+    base_url = "http://testserver"
+
+
 def _setting():
     s = models.Setting()
     s.wecom_corp_id = "wwa7f31908d0ab46a2"
@@ -23,12 +27,12 @@ def test_wecom_oauth_generates_state(monkeypatch):
     monkeypatch.setattr(auth_mod, "_wecom_is_real", lambda s: True)
     monkeypatch.setattr(auth_mod, "get_setting", lambda db: setting)
 
-    def fake_authorize(setting, state):
+    def fake_authorize(request, setting, state):
         captured["state"] = state
         return "https://open.weixin.qq.com/connect/oauth2/authorize?state=" + state
 
     monkeypatch.setattr(auth_mod, "_wecom_authorize_url", fake_authorize)
-    resp = wecom_oauth(db=None)
+    resp = wecom_oauth(request=_Req(), db=None)
     assert resp.status_code in (301, 302, 307)
     assert captured["state"] and len(captured["state"]) > 10
 
@@ -44,7 +48,7 @@ def test_callback_real_mode_error_redirects_to_login(monkeypatch):
         )
 
     monkeypatch.setattr(auth_mod, "_wecom_exchange_userid", fake_exchange)
-    resp = asyncio.run(wecom_callback(code="abc", db=None))
+    resp = asyncio.run(wecom_callback(request=_Req(), code="abc", db=None))
     assert isinstance(resp, RedirectResponse)
     assert "/login?error=" in resp.headers["location"]
     assert "60020" in resp.headers["location"]
@@ -59,7 +63,7 @@ def test_callback_real_mode_empty_userid_redirects(monkeypatch):
         return ""
 
     monkeypatch.setattr(auth_mod, "_wecom_exchange_userid", fake_exchange)
-    resp = asyncio.run(wecom_callback(code="abc", db=None))
+    resp = asyncio.run(wecom_callback(request=_Req(), code="abc", db=None))
     assert isinstance(resp, RedirectResponse)
     assert "/login?error=" in resp.headers["location"]
 
@@ -91,7 +95,7 @@ def test_callback_success_redirects_to_login_token(monkeypatch):
     monkeypatch.setattr(auth_mod, "_wecom_exchange_userid", fake_exchange)
     monkeypatch.setattr(auth_mod, "create_token", lambda user_id: "tok-123")
 
-    resp = asyncio.run(wecom_callback(code="abc", db=db))
+    resp = asyncio.run(wecom_callback(request=_Req(), code="abc", db=db))
     db.close()
     assert isinstance(resp, RedirectResponse)
     assert "/login?token=tok-123" in resp.headers["location"]

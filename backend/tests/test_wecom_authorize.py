@@ -4,6 +4,10 @@ from app import models
 from app.controllers.frontend.auth import _wecom_authorize_url, _wecom_callback_url
 
 
+class _Req:
+    base_url = "http://testserver"
+
+
 def _setting():
     return models.Setting(
         wecom_corp_id="wwa7f31908d0ab46a2",
@@ -13,7 +17,7 @@ def _setting():
 
 
 def test_authorize_redirect_uri_points_to_callback():
-    url = _wecom_authorize_url(_setting(), state="abc123")
+    url = _wecom_authorize_url(_Req(), _setting(), state="abc123")
     parsed = urlparse(url)
     query = parse_qs(parsed.query)
     redirect = query["redirect_uri"][0]
@@ -21,7 +25,7 @@ def test_authorize_redirect_uri_points_to_callback():
 
 
 def test_authorize_query_params():
-    url = _wecom_authorize_url(_setting(), state="abc123")
+    url = _wecom_authorize_url(_Req(), _setting(), state="abc123")
     parsed = urlparse(url)
     query = parse_qs(parsed.query)
     assert query["appid"] == ["wwa7f31908d0ab46a2"]
@@ -32,7 +36,7 @@ def test_authorize_query_params():
 
 def test_callback_url_appends_when_missing():
     assert (
-        _wecom_callback_url(_setting())
+        _wecom_callback_url(_Req(), _setting())
         == "https://oabot.gxqggsglyxgs.cn:18899/api/auth/wecom/callback"
     )
 
@@ -43,6 +47,6 @@ def test_callback_url_does_not_duplicate_path():
         "https://oabot.gxqggsglyxgs.cn:18899/api/auth/wecom/callback"
     )
     assert (
-        _wecom_callback_url(setting)
+        _wecom_callback_url(_Req(), setting)
         == "https://oabot.gxqggsglyxgs.cn:18899/api/auth/wecom/callback"
     )

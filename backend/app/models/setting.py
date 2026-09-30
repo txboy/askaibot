@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, String
+from sqlalchemy import Identity, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .types import OrEmptyStr, OrEmptyText
@@ -8,7 +8,7 @@ from ..database import Base
 class Setting(Base):
     __tablename__ = "settings"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, Identity(), primary_key=True)
     base_url: Mapped[str] = mapped_column(
         String(500), default="https://api.openai.com/v1"
     )

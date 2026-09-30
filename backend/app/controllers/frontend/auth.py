@@ -7,7 +7,7 @@ import uuid
 from urllib.parse import quote
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Request
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.orm import Session
 
@@ -235,11 +235,11 @@ def update_phone(
 
 
 @router.get("/wecom/qrcode")
-def wecom_qrcode(db: Session = Depends(get_db)):
+def wecom_qrcode(request: Request, db: Session = Depends(get_db)):
     setting = get_setting(db)
     if _wecom_is_real(setting):
         state = str(uuid.uuid4())
-        url = _wecom_authorize_url(setting, state)
+        url = _wecom_authorize_url(request, setting, state)
         return {"mode": "real", "login_url": url, "state": state}
     if not setting.debug_mode:
         return {"mode": "disabled", "login_url": "", "mock_code": ""}
@@ -253,27 +253,27 @@ def wecom_qrcode(db: Session = Depends(get_db)):
 
 
 @router.get("/wecom/oauth")
-def wecom_oauth(db: Session = Depends(get_db), state: str = ""):
+def wecom_oauth(request: Request, db: Session = Depends(get_db), state: str = ""):
     setting = get_setting(db)
     if _wecom_is_real(setting):
         state = state or str(uuid.uuid4())
-        return RedirectResponse(_wecom_authorize_url(setting, state))
-    return RedirectResponse(f"{config.frontend_url}/login")
+        return RedirectResponse(_wecom_authorize_url(request, setting, state))
+    return RedirectResponse(f"{_wecom_base(request, setting)}/login")
 
 
 @router.get("/wecom/callback")
-async def wecom_callback(code: str, db: Session = Depends(get_db)):
+async def wecom_callback(request: Request, code: str, db: Session = Depends(get_db)):
     setting = get_setting(db)
     if _wecom_is_real(setting):
         try:
             userid = await _wecom_exchange_userid(setting, code)
         except HTTPException as exc:
             return RedirectResponse(
-                f"{_wecom_base(setting)}/login?error={quote(str(exc.detail), safe='')}"
+                f"{_wecom_base(request, setting)}/login?error={quote(str(exc.detail), safe='')}"
             )
         if not userid:
             return RedirectResponse(
-                f"{_wecom_base(setting)}/login?error={quote('无法识别企业微信身份（可能不在应用可见范围）', safe='')}"
+                f"{_wecom_base(request, setting)}/login?error={quote('无法识别企业微信身份（可能不在应用可见范围）', safe='')}"
             )
         nickname = f"企微·{userid[-6:]}"
     else:
@@ -290,7 +290,7 @@ async def wecom_callback(code: str, db: Session = Depends(get_db)):
         db.refresh(user)
 
     token = create_token(user.id)
-    return RedirectResponse(f"{_wecom_base(setting)}/login?token={token}")
+    return RedirectResponse(f"{_wecom_base(request, setting)}/login?token={token}")
 
 
 def _wecom_is_real(setting) -> bool:
@@ -299,19 +299,27 @@ def _wecom_is_real(setting) -> bool:
     )
 
 
-def _wecom_base(setting) -> str:
-    base = (setting.wecom_redirect or config.frontend_url).rstrip("/")
-    if base.endswith("/api/auth/wecom/callback"):
-        base = base[: -len("/api/auth/wecom/callback")].rstrip("/")
-    return base
+def _wecom_base(request: Request, setting) -> str:
+    """重定向到前端登录页的地址。
+
+    显式配置的 ``wecom_redirect`` 优先；否则使用当前请求的实际 Host
+    （反向代理下已解析 X-Forwarded-*），无需额外配置即可跳回到当前域名。
+    """
+    configured = (setting.wecom_redirect or "").strip()
+    if configured:
+        base = configured.rstrip("/")
+        if base.endswith("/api/auth/wecom/callback"):
+            base = base[: -len("/api/auth/wecom/callback")].rstrip("/")
+        return base
+    return str(request.base_url).rstrip("/")
 
 
-def _wecom_callback_url(setting) -> str:
-    return f"{_wecom_base(setting)}/api/auth/wecom/callback"
+def _wecom_callback_url(request: Request, setting) -> str:
+    return f"{_wecom_base(request, setting)}/api/auth/wecom/callback"
 
 
-def _wecom_authorize_url(setting, state: str) -> str:
-    redirect = _wecom_callback_url(setting)
+def _wecom_authorize_url(request: Request, setting, state: str) -> str:
+    redirect = _wecom_callback_url(request, setting)
     return (
         "https://open.weixin.qq.com/connect/oauth2/authorize"
         f"?appid={setting.wecom_corp_id}"
@@ -776,11 +784,7 @@ async def feishu_free_login(
 def _parse_agreed_ids(user: models.User) -> set[int]:
     if not user.agreed_agreement_ids:
         return set()
-    return {
-        int(x)
-        for x in user.agreed_agreement_ids.split(",")
-        if x.strip().isdigit()
-    }
+    return {int(x) for x in user.agreed_agreement_ids.split(",") if x.strip().isdigit()}
 
 
 @router.get("/agreements", response_model=list[schemas.AgreementPublic])

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Identity, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -11,7 +11,7 @@ from ..database import Base
 class Skill(Base):
     __tablename__ = "skills"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, Identity(), primary_key=True)
     name: Mapped[str] = mapped_column(String(500))
     description: Mapped[str] = mapped_column(OrEmptyStr(500), default="", nullable=True)
     dir_path: Mapped[str] = mapped_column(
@@ -32,6 +32,6 @@ class Skill(Base):
 class SkillAccess(Base):
     __tablename__ = "skill_access"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, Identity(), primary_key=True)
     skill_id: Mapped[int] = mapped_column(Integer, ForeignKey("skills.id"), index=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), index=True)

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import Identity, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -11,7 +11,7 @@ from ..database import Base
 class Message(Base):
     __tablename__ = "messages"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, Identity(), primary_key=True)
     conversation_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("conversations.id"), index=True
     )

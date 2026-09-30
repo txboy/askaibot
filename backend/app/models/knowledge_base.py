@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import Identity, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -11,7 +11,7 @@ from ..database import Base
 class KnowledgeBase(Base):
     __tablename__ = "knowledge_bases"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, Identity(), primary_key=True)
     name: Mapped[str] = mapped_column(String(500))
     provider: Mapped[str] = mapped_column(String(500), default="dify")  # dify / ragflow
     base_url: Mapped[str] = mapped_column(String(500))

@@ -6,7 +6,7 @@ services:
     container_name: chatbot-backend
     restart: unless-stopped
     environment:
-      - FRONTEND_URL=http://localhost
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
       - JWT_SECRET=${JWT_SECRET:-change-this-super-secret-key-please-32bytes-min}
     volumes:
       - ../backend/data:/app/data
