@@ -25,6 +25,11 @@ def _setting(**overrides):
     return s
 
 
+class _Req:
+    base_url = "http://testserver"
+
+
+
 class FakeHttp:
     def __init__(self, data):
         self.posts = []
@@ -188,7 +193,7 @@ def test_callback_error_redirects_to_login(monkeypatch):
         raise HTTPException(status_code=400, detail="钉钉登录失败：bad code")
 
     monkeypatch.setattr(auth_mod, "_dingtalk_user_token", fake_token)
-    resp = asyncio.run(dingtalk_callback(code="abc", db=None))
+    resp = asyncio.run(dingtalk_callback(request=_Req(), code="abc", db=None))
     assert isinstance(resp, RedirectResponse)
     assert "/login?error=" in resp.headers["location"]
     assert "bad" in resp.headers["location"]
@@ -219,7 +224,7 @@ def test_callback_success_creates_user(monkeypatch):
     monkeypatch.setattr(auth_mod, "_dingtalk_user_info", fake_info)
     monkeypatch.setattr(auth_mod, "create_token", lambda user_id: "tok-456")
 
-    resp = asyncio.run(dingtalk_callback(code="abc", db=db))
+    resp = asyncio.run(dingtalk_callback(request=_Req(), code="abc", db=db))
     assert isinstance(resp, RedirectResponse)
     assert "/login?token=tok-456" in resp.headers["location"]
     assert (
@@ -249,7 +254,7 @@ def test_callback_mock_creates_user(monkeypatch):
     )
     monkeypatch.setattr(auth_mod, "create_token", lambda user_id: "tok-mock")
 
-    resp = asyncio.run(dingtalk_callback(code="mcode", db=db))
+    resp = asyncio.run(dingtalk_callback(request=_Req(), code="mcode", db=db))
     assert isinstance(resp, RedirectResponse)
     assert "/login?token=tok-mock" in resp.headers["location"]
     assert (
