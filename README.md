@@ -1,93 +1,39 @@
 # askai — 自托管聊天机器人
 
-一个自托管聊天机器人，使用 **Vue 3 + FastAPI** 构建，采用暖色调主题（奶油底 / 暖橙点缀）。
+一个开源自托管聊天机器人，使用 **Vue 3 + FastAPI** 构建，接入任意 **OpenAI 兼容接口**。界面采用暖色主题（奶油底 / 暖橙点缀），开箱即用，数据完全掌握在自己手里。
 
-支持接入任意 **OpenAI 兼容接口**，提供手机号验证码与企业微信登录、多会话管理、流式（打字机）响应、Markdown 渲染与代码高亮、文件上传发送给模型，并内置一个带导航栏的管理后台。
+## 它能做什么
 
----
+- 💬 **多会话聊天**：新建 / 重命名 / 删除会话，历史持久化
+- ⚡ **流式响应**：SSE 打字机效果，支持中途取消
+- 📝 **Markdown 与代码高亮**：代码块一键复制
+- 📎 **文件上传**：图片、文本、PDF、Word、Excel 直接发给模型
+- 🔌 **多模型接口**：管理员维护多个 OpenAI 兼容接口，用户在聊天中选择
+- 📚 **知识库**：接入 Dify / RAGFlow，支持用户选择或模型自主检索
+- 🧰 **MCP 工具**与**技能包（Skill）**：让模型调用外部工具
+- 🌐 **联网搜索**：Tavily / Bing / SearXNG / DuckDuckGo
+- 🔑 **多种登录**：手机号验证码、企业微信、钉钉、飞书
+- 🛡️ **三层权限**：超级管理员 / 部门管理员 / 普通用户，含部门、用户组与审计日志
+- 🤖 **机器人接入**：企业微信、钉钉、飞书群机器人
+- 🎨 **可定制**：Logo、Favicon、站点标题、助手形象、主题（暖 / 冷 / 暗）
 
-## ✨ 功能特性
+## 快速开始
 
-- **暖色主题**：奶油底色 + 暖橙 (`#e0804a`) 点缀
-- **多会话管理**：新建 / 删除 / 重命名会话，历史消息持久化到 SQLite
-- **流式响应**：SSE（Server-Sent Events）打字机效果，支持中途取消
-- **Markdown 与代码高亮**：`markdown-it` + `highlight.js`，代码块带一键复制
-- **多 LLM 接口管理**：管理员可维护多个 OpenAI 兼容接口（`base_url` / `api_key` / 模型列表），用户在前端选择接口与模型
-- **文件上传**：图片以 `image_url`（base64）发送；文本 / PDF / Word / Excel 自动提取文本后嵌入消息
-- **三种登录方式**：手机号 + 验证码（本地模拟）、企业微信网页授权（OAuth）、企业微信扫码
-- **管理后台**（左侧导航）：首页统计、用户列表、接口设置、企微设置、Logo 设置、系统设置、修改密码
-  - 首页：注册用户 / 会话 / 消息 / 接口 / 附件总数 + 接口启用状态概览
-  - 用户列表：昵称、手机号、会话数、**总 Token**、**当天 Token**、注册/最近活跃时间，支持删除用户（级联删除其会话、消息与附件）
-  - Logo 设置：上传自定义 Logo（登录页与侧边栏自动生效），可恢复默认
-  - 系统设置：主题、调试模式、站点标题、Favicon，以及**后台随机地址**（开启后仅能用 `?r=随机参数` 访问后台，否则 404）
-- **Token 统计**：聊天时采集模型返回的 `usage.total_tokens`，按用户汇总展示
+### Docker 一键部署（推荐）
 
----
-
-## 🛠 技术栈
-
-| 层 | 技术 |
-|----|------|
-| 前端 | Vue 3 + Vite SPA |
-| 后端 | FastAPI (Python) |
-| 存储 | SQLite |
-| 认证 | JWT |
-| 流式 | SSE (Server-Sent Events) |
-| 部署 | Docker Compose（nginx + uvicorn） |
-
----
-
-## 📁 目录结构
-
-```
-askai/
-├─ backend/                        # FastAPI 后端
-│  ├─ app/
-│  │  ├─ main.py                   # 应用入口、路由注册、启动迁移
-│  │  ├─ config.py                 # 配置（env 可覆盖）
-│  │  ├─ database.py               # SQLite / SQLAlchemy 引擎
-│  │  ├─ models.py                 # 数据模型
-│  │  ├─ schemas.py                # Pydantic 模型
-│  │  ├─ auth.py                   # JWT 签发与校验
-│  │  ├─ security.py               # 密码哈希
-│  │  ├─ common.py                 # 共享工具（设置、脱敏、模型解析）
-│  │  ├─ filetools.py              # 文件类型识别与文本提取
-│  │  └─ routers/
-│  │     ├─ auth.py                # 登录 / 企业微信 / 短信
-│  │     ├─ conversations.py       # 会话与消息
-│  │     ├─ chat.py                # SSE 流式聊天
-│  │     ├─ uploads.py             # 文件上传 / Logo
-│  │     ├─ endpoints.py           # 用户侧接口列表
-│  │     └─ admin.py               # 管理后台
-│  ├─ reset_admin_secret.py        # 命令行工具：清除后台随机地址设置
-│  ├─ requirements.txt
-│  └─ app.db                       # SQLite 数据库（自动生成）
-├─ frontend/                       # Vue 3 前端
-│  ├─ src/
-│  │  ├─ main.js / App.vue
-│  │  ├─ api.js                    # API 客户端
-│  │  ├─ store.js                  # 全局状态（token / user）
-│  │  ├─ style.css                 # 全局暖色主题
-│  │  ├─ router/index.js           # 路由（/、/login、/admin）
-│  │  ├─ components/               # Logo / Markdown / 附件图片等
-│  │  ├─ views/                    # Login / Chat / Admin
-│  │  └─ utils/markdown.js
-│  ├─ public/fonts/                # ZiHunBianTaoTi-2 字体
-│  ├─ package.json / vite.config.js
-├─ docker/                         # Docker 部署配置
-│  ├─ Dockerfile.backend
-│  ├─ Dockerfile.frontend
-│  ├─ nginx.conf
-│  └─ docker-compose.yml
-├─ source/logo/                    # Logo 源文件
-└─ plan/plan.md                    # 开发方案
+```bash
+cd docker
+docker compose up -d --build
 ```
 
----
+启动后：
 
-## 🚀 快速开始
+- 聊天前台：http://localhost
+- 管理后台：http://localhost/admin
 
-### 1. 后端
+### 本地开发
+
+**后端**
 
 ```bash
 cd backend
@@ -95,7 +41,7 @@ pip install -r requirements.txt
 python -m uvicorn app.main:app --port 8000 --reload
 ```
 
-### 2. 前端
+**前端**
 
 ```bash
 cd frontend
@@ -103,170 +49,83 @@ npm install
 npm run dev
 ```
 
-浏览器访问 **http://localhost:5173**（Vite 已将 `/api` 代理到后端 8000 端口）。
+浏览器访问 http://localhost:5173 （Vite 已把 `/api` 代理到后端）。
 
-### 3. 管理后台
+## 首次使用
 
-访问 **http://localhost:5173/admin**
+1. 打开后台 **http://localhost/admin**，使用初始账号登录：
+   - 用户名：`admin`
+   - 密码：`admin123`
+   > ⚠️ 首次登录后请立即在「修改密码」中更换。
+2. 在「工具接入 → 接口设置」新增一个 OpenAI 兼容接口（`base_url`、`api_key`、模型列表）。
+3. 回到前台 http://localhost ，用手机号（开发默认模拟验证码）等方式登录，即可开始对话。
 
-- 初始管理员账号：**admin** / **admin123**
-- 首次登录后请及时在「修改密码」中更换密码
+> 默认后端以模拟模式运行短信（`SMS_MOCK=true`），验证码会直接返回/打印，便于本地体验。生产环境请在管理后台配置真实短信服务商。
 
----
+## 管理后台功能
 
-## 🐳 Docker 一键部署
+左侧导航按角色显示。超级管理员可管理：
+
+| 分组 | 功能 |
+|------|------|
+| 用户管理 | 用户列表、部门、管理员账号、用户组 |
+| 工具接入 | 接口设置、短信接口、联网搜索、MCP 工具、技能包、知识库 |
+| 渠道接入 | 企业微信、钉钉、飞书 |
+| 系统管理 | 系统设置、数据库、审计日志、协议管理 |
+
+其他能力：Token 用量统计与每日限额、首页数据概览、数据库在线备份与热切换、后台随机地址（`/admin?r=<随机参数>`）、协议强制同意等。
+
+## 忘记后台入口？
+
+若开启了「后台随机地址」又忘记 `?r=` 参数，在服务器上执行：
 
 ```bash
-cd docker
-docker compose up -d --build
+cd backend && python reset_admin_secret.py
 ```
 
-- 前端：http://localhost（nginx 托管，`/api` 反向代理至 backend，已关闭缓冲以支持流式）
-- 后端：http://localhost:8000
-- 数据持久化于 Docker 卷 `app_data`（SQLite 位于 `/app/data/app.db`，上传附件位于 `/app/data/uploads`）
+Docker 部署下：
 
----
+```bash
+docker exec -it chatbot-backend python reset_admin_secret.py
+```
 
-## ⚙️ 环境变量（可选）
+## 配置
 
-在 `backend/` 下创建 `.env` 文件（或通过 Docker 时的 `environment` 传入）：
+可选环境变量（在 `backend/.env` 或 Docker 环境变量中设置），常用项：
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `JWT_SECRET` | JWT 密钥（至少 32 字节） | 内置占位符 |
-| `FRONTEND_URL` | 前端地址（用于企微回调跳转） | `http://localhost:5173` |
+| `JWT_SECRET` | JWT 密钥（生产务必修改，≥32 字节） | 内置占位符 |
+| `FRONTEND_URL` | 前端地址（OAuth 回调跳转） | `http://localhost:5173` |
 | `SMS_MOCK` | 是否使用本地模拟短信验证码 | `true` |
-| `DATABASE_URL` | 数据库连接串 | `sqlite:///./app.db` |
-| `UPLOAD_DIR` | 上传文件目录 | `./data/uploads` |
+| `DATABASE_URL` | 数据库连接串 | `sqlite:///./data/app.db` |
 | `MAX_UPLOAD_SIZE` | 上传大小上限（字节） | `20971520`（20MB） |
 
----
+完整列表见 [部署与运维](docs/deployment.md#环境变量)。
 
-## 🛠 运维命令
+## 文档
 
-### 清除后台随机地址（重置后台入口）
+- [架构总览](docs/architecture.md)
+- [后端实现](docs/backend.md)
+- [前端实现](docs/frontend.md)
+- [功能详解](docs/features.md)
+- [数据模型](docs/data-model.md)
+- [API 参考](docs/api.md)
+- [部署与运维](docs/deployment.md)
 
-后台系统设置中的「**后台随机地址**」开启后，只有携带正确 `?r=随机参数` 才能进入后台（否则显示 404）。若**忘记随机参数导致无法登录后台**，可在服务器上运行以下命令一键重置：关闭随机后台地址开关并清空随机参数，之后可直接通过 `/admin` 进入。
+## 技术栈
 
-```bash
-cd backend
-python reset_admin_secret.py
-```
+| 层 | 技术 |
+|----|------|
+| 前端 | Vue 3 + Vite |
+| 后端 | FastAPI + SQLAlchemy |
+| 存储 | SQLite（可热切换 MySQL / PostgreSQL / MSSQL / Oracle） |
+| 认证 | JWT |
+| 流式 | SSE |
+| 部署 | Docker Compose（nginx + uvicorn） |
 
-执行成功输出示例：
+## 备注
 
-```
-[OK] 已清除后台随机地址设置
-   admin_secret_enabled = 0
-   admin_secret         = ''
-现在可直接访问 /admin 进入后台。
-```
-
-说明：
-
-- 脚本读取环境变量 `DATABASE_URL`（默认 `sqlite:///./app.db`），与应用共用同一数据库。
-- 重置后请在后台「系统设置 → 后台随机地址」中重新生成随机参数（如需再次启用）。
-
-### Docker 部署下清除后台随机地址
-
-Docker 部署时，`reset_admin_secret.py` 已随镜像拷贝进后端容器 `/app`，且容器内 `DATABASE_URL=sqlite:////app/data/app.db`（存于 `app_data` 卷），无需额外传参，直接在宿主机执行：
-
-```bash
-# 按容器名
-docker exec -it chatbot-backend python reset_admin_secret.py
-
-# 或按服务名
-docker compose exec backend python reset_admin_secret.py
-```
-
-- 容器名 `chatbot-backend`，服务名 `backend`（见 `docker/docker-compose.yml`）
-- 数据持久化于 `app_data` 卷（容器内 `/app/data`）；若卷被清空，随机地址设置也会一并丢失
-
----
-
-## 🔌 API 概览
-
-所有用户接口使用 `Authorization: Bearer <token>`；管理接口使用管理员 JWT。
-
-**认证**
-- `POST /api/auth/sms/send` — 发送本地模拟验证码
-- `POST /api/auth/sms/verify` — 手机号 + 验证码登录
-- `GET /api/auth/wecom/qrcode` — 获取企业微信扫码/授权信息
-- `GET /api/auth/wecom/oauth` — 企业微信网页授权跳转
-- `GET /api/auth/wecom/callback` — 处理授权回调
-- `GET /api/auth/me` — 当前用户信息
-
-**会话与消息**
-- `GET /api/conversations` / `POST /api/conversations` — 列表 / 新建
-- `PUT /api/conversations/{id}` — 重命名
-- `DELETE /api/conversations/{id}` — 删除
-- `GET /api/conversations/{id}/messages` — 消息列表
-
-**聊天**
-- `POST /api/chat` — SSE 流式聊天（请求体包含 `conversation_id`、`content`、可选 `endpoint_id`、`model`、`attachment_ids`）
-- `POST /api/upload` — 上传文件（multipart）
-- `GET /api/files/{id}` — 读取上传文件（用于图片缩略图）
-
-**用户侧接口**
-- `GET /api/endpoints` — 可用的 LLM 接口与模型列表
-
-**管理后台**
-- `POST /api/admin/login` — 管理员登录
-- `GET/POST /api/admin/endpoints`、`PUT/DELETE /api/admin/endpoints/{id}` — 接口增删改
-- `GET/PUT /api/admin/wecom` — 企业微信登录配置
-- `GET/POST/DELETE /api/admin/logo` — Logo 状态 / 上传 / 恢复默认
-- `GET /api/admin/stats` — 首页统计
-- `GET/DELETE /api/admin/users` — 用户列表 / 删除用户（含 Token 统计）
-- `PUT /api/admin/password` — 修改管理员密码（需验证旧密码）
-
-**Logo**
-- `GET /api/logo` — 获取当前自定义 Logo（未设置时 404）
-
----
-
-## 🗄 数据模型（SQLite）
-
-| 表 | 关键字段 |
-|----|----------|
-| `users` | id, nickname, phone, wecom_userid, created_at |
-| `conversations` | id, user_id, title, model, created_at, updated_at |
-| `messages` | id, conversation_id, role, content, **tokens**, created_at |
-| `settings` | 全局设置（微信参数 + logo_path） |
-| `attachments` | id, user_id, conversation_id, message_id, filename, stored_name, content_type, kind, extracted_text, size |
-| `admins` | id, username, password_hash |
-| `api_endpoints` | id, name, base_url, api_key, models, enabled, is_default |
-
----
-
-## 🔑 登录机制说明
-
-- **手机号 + 验证码**：本地模拟模式（`SMS_MOCK=true`），后端生成 6 位验证码并返回 / 打印，用于开发联调；可替换为真实短信服务商。
-- **企业微信**：需配置 CorpID / Secret / AgentId / 回调域名后启用；未配置时自动使用模拟模式，方便本地演示。
-- **Token 统计**：聊天时后端向模型请求 `stream_options.include_usage`，将返回的 `total_tokens` 记入对应助手消息，管理后台据此汇总生成各用户的总 Token 与当天 Token。
-
----
-
-## 🔐 三层权限与审计（RBAC）
-
-后台账号分为三层角色，满足企业内控与等保：
-
-| 角色 | 权限 |
-|------|------|
-| **超级管理员(super)** | 全部后台功能，含部门管理、管理员账号、审计日志 |
-| **部门管理员(dept)** | 仅管理本部门成员与本部门用量，不能改全局设置、不能删除用户 |
-| **普通用户(user)** | 聊天终端用户，无后台权限 |
-
-- **部门**：独立的 `departments` 表；用户通过 `users.department_id` 归属某个部门；部门管理员由超级管理员在「部门管理 → 指派管理员」中指定。
-- **管理员账号**：`admins` 表新增 `role`（`super`/`dept`）与 `department_id`；初始账号 `admin` 为超级管理员。
-- **全局管理接口**：所有接口/知识库/MCP/技能/搜索/短信/企微/钉钉/飞书/用户组/协议/系统设置等接口仅 `super` 可访问。
-- **审计日志**：关键写操作（登录、改配置、增删改用户/部门/管理员/接口/工具/协议、改密码等）自动写入 `audit_logs`，仅超级管理员可在「审计日志」页查看并按条件筛选、导出 CSV。
-
-> **迁移**：启动时 `main.py::_ensure_columns` 会自动为 `admins`/`users` 补列（`role`、`department_id`），并自动创建 `departments`、`audit_logs` 表，无需手工执行 SQL。
-
----
-
-## 📝 备注
-
-- API Key 仅存储在服务端，接口列表对前端做脱敏，不返回明文。
-- 管理后台 `admin` / `admin123` 为初始账号，部署后务必修改。
-- 计划文档见 [`plan/plan.md`](plan/plan.md)。
+- API Key 仅存储在服务端，接口列表对前端脱敏，不返回明文。
+- 数据库可在后台热切换，支持 SQLite / MySQL / PostgreSQL / MSSQL / Oracle。
+- 开发方案见 [`plan/plan.md`](plan/plan.md)。
