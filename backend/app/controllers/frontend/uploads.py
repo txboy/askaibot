@@ -124,8 +124,8 @@ def get_default_assistant_avatar(db: Session = Depends(get_db)):
 def get_site(db: Session = Depends(get_db)):
     setting = get_setting(db)
     return {
-        "site_title": setting.site_title or "askai",
-        "assistant_name": setting.assistant_name or "askai",
+        "site_title": setting.site_title or "askaibot",
+        "assistant_name": setting.assistant_name or "askaibot",
         "assistant_avatar_url": (
             f"/api/assistant-avatar?v={setting.assistant_avatar}"
             if setting.assistant_avatar

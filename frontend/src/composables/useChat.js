@@ -42,7 +42,7 @@ const skills = ref([])
 const selectedSkillIds = ref([])
 const skillPickerOpen = ref(false)
 
-const defaultAssistantName = ref('askai')
+const defaultAssistantName = ref('askaibot')
 const defaultAssistantAvatar = ref('')
 
 const quota = ref(null)
@@ -59,7 +59,7 @@ const avatarSrc = computed(() => {
 })
 
 const assistantName = computed(
-  () => me()?.assistant_name || defaultAssistantName.value || 'askai'
+  () => me()?.assistant_name || defaultAssistantName.value || 'askaibot'
 )
 
 const assistantAvatarSrc = computed(() => {
@@ -399,7 +399,7 @@ async function init() {
   } catch {}
   try {
     const site = await api.site()
-    defaultAssistantName.value = site.assistant_name || 'askai'
+    defaultAssistantName.value = site.assistant_name || 'askaibot'
     defaultAssistantAvatar.value = site.assistant_avatar_url || ''
   } catch {}
 }

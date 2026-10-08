@@ -247,7 +247,7 @@ class TestOracleEmptyString:
         s.commit()
         setting = s.get(models.Setting, 1)
         assert setting is not None
-        assert setting.site_title == "askai"
+        assert setting.site_title == "askaibot"
         assert setting.api_key == ""  # 空串读取归一化为 ''
         assert setting.system_prompt == ""
         s.close()

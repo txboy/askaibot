@@ -112,7 +112,7 @@ async function loadSystem() {
     faviconPreview.value = r.favicon_set ? '/api/favicon?t=' + Date.now() : ''
     adminEnabled.value = r.admin_secret_enabled
     adminSecret.value = r.admin_secret || ''
-    assistantName.value = r.assistant_name || 'askai'
+    assistantName.value = r.assistant_name || 'askaibot'
     systemPrompt.value = r.system_prompt || ''
     systemTokenLimit.value = r.token_limit_daily ?? 0
     assistantAvatarSet.value = r.assistant_avatar_set
@@ -132,7 +132,7 @@ async function saveAssistantName() {
   assistantMsg.value = ''
   try {
     const r = await api.adminSaveSystem({ assistant_name: assistantName.value })
-    assistantName.value = r.assistant_name || 'askai'
+    assistantName.value = r.assistant_name || 'askaibot'
     assistantMsg.value = '已保存'
   } catch (e) {
     assistantMsg.value = e.message
@@ -397,7 +397,7 @@ onMounted(() => {
         <p v-if="assistantMsg" class="hint">{{ assistantMsg }}</p>
         <button class="btn" :disabled="savingAssistant" @click="saveAssistantName">{{ savingAssistant ? '保存中…' : '保存助手名称' }}</button>
       </div>
-      <p class="hint" style="margin-top: 8px">聊天气泡中助手显示的默认昵称；留空时默认为 askai。用户可在个人资料中覆盖为自己的助手名。</p>
+      <p class="hint" style="margin-top: 8px">聊天气泡中助手显示的默认昵称；留空时默认为 askaibot。用户可在个人资料中覆盖为自己的助手名。</p>
     </div>
 
     <h3 class="section-title">通用系统提示词</h3>

@@ -1,6 +1,6 @@
 # 架构总览
 
-askai 是一个自托管聊天机器人，前后端分离：前端 Vue 3 SPA，后端 FastAPI，默认 SQLite 存储，SSE 流式对话，Docker Compose 一键部署。
+askaibot 是一个自托管聊天机器人，前后端分离：前端 Vue 3 SPA，后端 FastAPI，默认 SQLite 存储，SSE 流式对话，Docker Compose 一键部署。
 
 ## 技术栈
 
@@ -17,7 +17,7 @@ askai 是一个自托管聊天机器人，前后端分离：前端 Vue 3 SPA，�
 ## 目录结构
 
 ```
-askai/
+askaibot/
 ├─ backend/                        # FastAPI 后端
 │  ├─ app/
 │  │  ├─ main.py                   # 入口：启动建表/补列、注册路由、播种管理员

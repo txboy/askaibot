@@ -195,7 +195,7 @@ async function bindPhone() {
           <div class="field">
             <label>助手昵称 <span class="muted">（留空则使用默认）</span></label>
             <div class="row">
-              <input v-model="assistantName" class="input" placeholder="默认 askai" @keyup.enter="saveAssistantName" />
+              <input v-model="assistantName" class="input" placeholder="默认 askaibot" @keyup.enter="saveAssistantName" />
               <button class="btn" :disabled="savingAssistantName" @click="saveAssistantName">
                 {{ savingAssistantName ? '保存中…' : '保存' }}
               </button>

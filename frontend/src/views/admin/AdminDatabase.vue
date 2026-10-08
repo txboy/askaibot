@@ -162,7 +162,7 @@ onMounted(load)
             <input v-model="form.port" class="input" placeholder="3306" />
           </label>
           <label>数据库名
-            <input v-model="form.database" class="input" placeholder="askai" />
+            <input v-model="form.database" class="input" placeholder="askaibot" />
           </label>
           <label>用户名
             <input v-model="form.username" class="input" placeholder="root" />

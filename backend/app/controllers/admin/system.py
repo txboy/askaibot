@@ -88,13 +88,13 @@ def get_system(
 ):
     setting = get_setting(db)
     return schemas.SystemOut(
-        site_title=setting.site_title or "askai",
+        site_title=setting.site_title or "askaibot",
         theme=setting.theme,
         debug_mode=bool(setting.debug_mode),
         favicon_set=bool(setting.favicon_path),
         admin_secret_enabled=bool(setting.admin_secret_enabled),
         admin_secret=setting.admin_secret,
-        assistant_name=setting.assistant_name or "askai",
+        assistant_name=setting.assistant_name or "askaibot",
         assistant_avatar_set=bool(setting.assistant_avatar),
         system_prompt=setting.system_prompt or "",
         token_limit_daily=setting.token_limit_daily,
@@ -115,7 +115,7 @@ def update_system(
     if payload.admin_secret is not None:
         setting.admin_secret = payload.admin_secret
     if payload.assistant_name is not None:
-        setting.assistant_name = payload.assistant_name.strip() or "askai"
+        setting.assistant_name = payload.assistant_name.strip() or "askaibot"
     if payload.system_prompt is not None:
         setting.system_prompt = payload.system_prompt
     if payload.token_limit_daily is not None:
@@ -138,7 +138,7 @@ def update_system(
         favicon_set=bool(setting.favicon_path),
         admin_secret_enabled=bool(setting.admin_secret_enabled),
         admin_secret=setting.admin_secret,
-        assistant_name=setting.assistant_name or "askai",
+        assistant_name=setting.assistant_name or "askaibot",
         assistant_avatar_set=bool(setting.assistant_avatar),
         system_prompt=setting.system_prompt or "",
         token_limit_daily=setting.token_limit_daily,

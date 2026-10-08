@@ -40,23 +40,27 @@ def _ensure_columns(engine) -> None:
             if "favicon_path" not in cols:
                 _add_column(conn, "settings", "favicon_path", "VARCHAR DEFAULT ''")
             if "site_title" not in cols:
-                _add_column(conn, "settings", "site_title", "VARCHAR DEFAULT 'askai'")
+                _add_column(
+                    conn, "settings", "site_title", "VARCHAR DEFAULT 'askaibot'"
+                )
             if "debug_mode" not in cols:
                 _add_column(conn, "settings", "debug_mode", "INTEGER DEFAULT 1")
             conn.execute(
-                text("UPDATE settings SET site_title = 'askai' WHERE site_title = ''")
+                text(
+                    "UPDATE settings SET site_title = 'askaibot' WHERE site_title = ''"
+                )
             )
             for name, ddl in {
                 "admin_secret_enabled": "INTEGER DEFAULT 0",
                 "admin_secret": "VARCHAR DEFAULT ''",
-                "assistant_name": "VARCHAR DEFAULT 'askai'",
+                "assistant_name": "VARCHAR DEFAULT 'askaibot'",
                 "assistant_avatar": "VARCHAR DEFAULT ''",
             }.items():
                 if name not in cols:
                     _add_column(conn, "settings", name, ddl)
             conn.execute(
                 text(
-                    "UPDATE settings SET assistant_name = 'askai' WHERE assistant_name = ''"
+                    "UPDATE settings SET assistant_name = 'askaibot' WHERE assistant_name = ''"
                 )
             )
             extra_settings = {
