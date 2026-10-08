@@ -1,0 +1,12 @@
+{
+  "name": "askaibot-preview",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "forwardPorts": [80, 8000],
+  "portsAttributes": {
+    "80": { "label": "askaibot", "onAutoForward": "openPreview" }
+  },
+  "postCreateCommand": "cd docker && docker compose build"
+}
