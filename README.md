@@ -2,6 +2,8 @@
 
 一个开源自托管聊天机器人，使用 **Vue 3 + FastAPI** 构建，接入任意 **OpenAI 兼容接口**。界面采用暖色主题（奶油底 / 暖橙点缀），开箱即用，数据完全掌握在自己手里。
 
+> 🔗 **在线预览**：https://<your-codespace>-80.app.github.dev （GitHub Codespaces 免费预览，空闲会自动停止；部署方式见 [docs/deployment.md](docs/deployment.md)）
+
 ## 它能做什么
 
 - 💬 **多会话聊天**：新建 / 重命名 / 删除会话，历史持久化
