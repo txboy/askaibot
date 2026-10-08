@@ -65,21 +65,6 @@ docker compose up -d --build
 - 为支持 SSE 关闭缓冲并延长超时：`proxy_buffering off`、`proxy_cache off`、`proxy_read_timeout 3600s`、`proxy_send_timeout 3600s`、`proxy_http_version 1.1`。
 - `location /` → `try_files $uri $uri/ /index.html`（SPA 回退）。
 
-## GitHub Codespaces 预览（免服务器）
-
-> ⚠️ 仅用于演示/预览，非生产环境。空闲会自动停止，受免费额度限制；数据随 codespace 删除而丢失。
-
-1. 仓库页 **Code → Codespaces → Create codespace on master**。
-2. 创建完成后（`.devcontainer` 会自动预构建镜像），在终端执行：
-
-   ```bash
-   cd docker && docker compose up -d
-   ```
-
-3. 打开 **Ports** 面板 → 端口 **80** → 右键 **Port Visibility → Public**。
-4. 访问 `https://<codespace 名>-80.app.github.dev`；后台 `/admin`，账号 `admin/admin123`。
-
-注意：每次**新建** codespace 都需重新把端口 80 设为 Public；同一 codespace 重启会保留端口可见性。
 
 ## 环境变量
 
