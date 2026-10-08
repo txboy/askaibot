@@ -14,10 +14,10 @@ class _Req:
 
 def _setting():
     s = models.Setting()
-    s.wecom_corp_id = "wwa7f31908d0ab46a2"
+    s.wecom_corp_id = "wwtestcorp12345678"
     s.wecom_secret = "secret"
-    s.wecom_agent_id = "1000191"
-    s.wecom_redirect = "https://oabot.gxqggsglyxgs.cn:18899"
+    s.wecom_agent_id = "1000001"
+    s.wecom_redirect = "https://example.com"
     return s
 
 

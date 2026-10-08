@@ -15,10 +15,14 @@ env/
 .mypy_cache/
 .cache/
 
-# 运行时数据（用户数据、上传文件、SQLite 数据库）
+# 运行时数据（用户数据、上传文件、SQLite 数据库、备份）
 backend/app.db
 backend/data/
+backend/backups/
 docker/data/
+*.db
+*.sqlite
+*.sqlite3
 
 # 环境变量与密钥
 .env
