@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import random
 import sys
 import uuid
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Request
@@ -264,16 +264,17 @@ def wecom_oauth(request: Request, db: Session = Depends(get_db), state: str = ""
 @router.get("/wecom/callback")
 async def wecom_callback(request: Request, code: str, db: Session = Depends(get_db)):
     setting = get_setting(db)
+    base = _redir_origin(request) or _wecom_base(request, setting)
     if _wecom_is_real(setting):
         try:
             userid = await _wecom_exchange_userid(setting, code)
         except HTTPException as exc:
             return RedirectResponse(
-                f"{_wecom_base(request, setting)}/login?error={quote(str(exc.detail), safe='')}"
+                f"{base}/login?error={quote(str(exc.detail), safe='')}"
             )
         if not userid:
             return RedirectResponse(
-                f"{_wecom_base(request, setting)}/login?error={quote('无法识别企业微信身份（可能不在应用可见范围）', safe='')}"
+                f"{base}/login?error={quote('无法识别企业微信身份（可能不在应用可见范围）', safe='')}"
             )
         nickname = f"企微·{userid[-6:]}"
     else:
@@ -290,13 +291,34 @@ async def wecom_callback(request: Request, code: str, db: Session = Depends(get_
         db.refresh(user)
 
     token = create_token(user.id)
-    return RedirectResponse(f"{_wecom_base(request, setting)}/login?token={token}")
+    return RedirectResponse(f"{base}/login?token={token}")
 
 
 def _wecom_is_real(setting) -> bool:
     return bool(
         setting.wecom_corp_id and setting.wecom_secret and setting.wecom_agent_id
     )
+
+
+def _redir_origin(request: Request | None) -> str | None:
+    """取前端显式传来的当前访问地址（origin）。
+
+    前端模拟扫码登录时把 ``window.location.origin`` 作为 ``redirect`` 参数传入，
+    用于回跳到用户当前浏览地址，无需配置 ``*_redirect`` 或 ``frontend_url``。
+    校验仅为 http/https 且含 host，返回 ``scheme://netloc``，否则返回 None。
+    """
+    if request is None:
+        return None
+    qp = getattr(request, "query_params", None)
+    if qp is None:
+        return None
+    raw = (qp.get("redirect") or "").strip()
+    if not raw:
+        return None
+    parsed = urlparse(raw)
+    if parsed.scheme in ("http", "https") and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}"
+    return None
 
 
 def _wecom_base(request: Request, setting) -> str:
@@ -536,8 +558,11 @@ def dingtalk_oauth(db: Session = Depends(get_db), state: str = ""):
 
 
 @router.get("/dingtalk/callback")
-async def dingtalk_callback(code: str, db: Session = Depends(get_db)):
+async def dingtalk_callback(
+    request: Request, code: str, db: Session = Depends(get_db)
+):
     setting = get_setting(db)
+    base = _redir_origin(request) or _dingtalk_base(setting)
     logger.info(
         "[dingtalk] callback 进入 code=%r real=%s", code, _dingtalk_is_real(setting)
     )
@@ -550,7 +575,7 @@ async def dingtalk_callback(code: str, db: Session = Depends(get_db)):
         except HTTPException as exc:
             logger.error("[dingtalk] callback 失败 detail=%r", exc.detail)
             return RedirectResponse(
-                f"{_dingtalk_base(setting)}/login?error={quote(str(exc.detail), safe='')}"
+                f"{base}/login?error={quote(str(exc.detail), safe='')}"
             )
         userid, nickname = await _dingtalk_identity(
             info, setting.dingtalk_app_key, setting.dingtalk_app_secret
@@ -565,7 +590,7 @@ async def dingtalk_callback(code: str, db: Session = Depends(get_db)):
     if not userid:
         logger.error("[dingtalk] callback 无 userid，跳转登录")
         return RedirectResponse(
-            f"{_dingtalk_base(setting)}/login?error={quote('无法识别钉钉身份', safe='')}"
+            f"{base}/login?error={quote('无法识别钉钉身份', safe='')}"
         )
     user = db.query(models.User).filter(models.User.dingtalk_userid == userid).first()
     if not user:
@@ -578,7 +603,7 @@ async def dingtalk_callback(code: str, db: Session = Depends(get_db)):
         logger.info("[dingtalk] callback 复用用户 userid=%s", userid)
 
     token = create_token(user.id)
-    return RedirectResponse(f"{_dingtalk_base(setting)}/login?token={token}")
+    return RedirectResponse(f"{base}/login?token={token}")
 
 
 @router.post("/dingtalk/free-login", response_model=schemas.TokenResponse)
@@ -721,8 +746,11 @@ async def _feishu_identity(app_id: str, app_secret: str, code: str):
 
 
 @router.get("/feishu/callback")
-async def feishu_callback(code: str, db: Session = Depends(get_db)):
+async def feishu_callback(
+    request: Request, code: str, db: Session = Depends(get_db)
+):
     setting = get_setting(db)
+    base = _redir_origin(request) or _feishu_base(setting)
     if _feishu_is_real(setting):
         try:
             userid, nickname = await _feishu_identity(
@@ -730,7 +758,7 @@ async def feishu_callback(code: str, db: Session = Depends(get_db)):
             )
         except HTTPException as exc:
             return RedirectResponse(
-                f"{_feishu_base(setting)}/login?error={quote(str(exc.detail), safe='')}"
+                f"{base}/login?error={quote(str(exc.detail), safe='')}"
             )
     else:
         if not setting.debug_mode:
@@ -740,7 +768,7 @@ async def feishu_callback(code: str, db: Session = Depends(get_db)):
 
     if not userid:
         return RedirectResponse(
-            f"{_feishu_base(setting)}/login?error={quote('无法识别飞书身份', safe='')}"
+            f"{base}/login?error={quote('无法识别飞书身份', safe='')}"
         )
     nickname = nickname or f"飞书·{userid[-6:]}"
     user = db.query(models.User).filter(models.User.feishu_userid == userid).first()
@@ -750,7 +778,7 @@ async def feishu_callback(code: str, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user)
     token = create_token(user.id)
-    return RedirectResponse(f"{_feishu_base(setting)}/login?token={token}")
+    return RedirectResponse(f"{base}/login?token={token}")
 
 
 @router.post("/feishu/free-login", response_model=schemas.TokenResponse)

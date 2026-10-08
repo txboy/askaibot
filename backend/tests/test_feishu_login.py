@@ -24,6 +24,11 @@ def _setting(**overrides):
     return s
 
 
+class _Req:
+    base_url = "http://testserver"
+
+
+
 class FakeHttp:
     def __init__(self, data):
         self.posts = []
@@ -156,7 +161,7 @@ def test_callback_error_redirects(monkeypatch):
         raise HTTPException(status_code=400, detail="飞书登录失败：code=400")
 
     monkeypatch.setattr(auth_mod, "_feishu_identity", fake_identity)
-    resp = asyncio.run(feishu_callback(code="abc", db=None))
+    resp = asyncio.run(feishu_callback(request=_Req(), code="abc", db=None))
     assert isinstance(resp, RedirectResponse)
     assert "/login?error=" in resp.headers["location"]
 
@@ -182,7 +187,7 @@ def test_callback_success_creates_user(monkeypatch):
     monkeypatch.setattr(auth_mod, "_feishu_identity", fake_identity)
     monkeypatch.setattr(auth_mod, "create_token", lambda user_id: "tok-1")
 
-    resp = asyncio.run(feishu_callback(code="abc", db=db))
+    resp = asyncio.run(feishu_callback(request=_Req(), code="abc", db=db))
     assert isinstance(resp, RedirectResponse)
     assert "/login?token=tok-1" in resp.headers["location"]
     assert (
@@ -212,7 +217,7 @@ def test_callback_mock_creates_user(monkeypatch):
     )
     monkeypatch.setattr(auth_mod, "create_token", lambda user_id: "tok-m")
 
-    resp = asyncio.run(feishu_callback(code="mcode", db=db))
+    resp = asyncio.run(feishu_callback(request=_Req(), code="mcode", db=db))
     assert isinstance(resp, RedirectResponse)
     assert "/login?token=tok-m" in resp.headers["location"]
     assert (

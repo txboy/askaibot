@@ -78,6 +78,12 @@ function detectFeishu() {
   return /Feishu|Lark/i.test(ua) || /feishu/i.test(ua) || /lark/i.test(ua)
 }
 
+function toAbsLoginUrl(url) {
+  const abs = new URL(url, window.location.origin).href
+  const sep = abs.includes('?') ? '&' : '?'
+  return abs + sep + `redirect=${encodeURIComponent(window.location.origin)}`
+}
+
 onMounted(async () => {
   const token = route.query.token
   if (token) {
@@ -149,8 +155,8 @@ onMounted(async () => {
         wecomLoginUrl.value = ''
         return
       }
-      wecomLoginUrl.value = r.login_url
-      qrUrl.value = await QRCode.toDataURL(r.login_url, { margin: 1, width: 180, color: { dark: '#3b2c22', light: '#ffffff' } })
+      wecomLoginUrl.value = r.mode === 'mock' ? toAbsLoginUrl(r.login_url) : r.login_url
+      qrUrl.value = await QRCode.toDataURL(wecomLoginUrl.value, { margin: 1, width: 180, color: { dark: '#3b2c22', light: '#ffffff' } })
     } catch (e) {
       msg.value = '加载企业微信登录失败: ' + e.message
     }
@@ -160,8 +166,8 @@ onMounted(async () => {
       const r = await api.dingtalkQrcode()
       dingtalkMode.value = r.mode
       if (r.mode !== 'disabled') {
-        dingtalkLoginUrl.value = r.login_url
-        dingtalkQrUrl.value = await QRCode.toDataURL(r.login_url, { margin: 1, width: 180, color: { dark: '#3b2c22', light: '#ffffff' } })
+        dingtalkLoginUrl.value = r.mode === 'mock' ? toAbsLoginUrl(r.login_url) : r.login_url
+        dingtalkQrUrl.value = await QRCode.toDataURL(dingtalkLoginUrl.value, { margin: 1, width: 180, color: { dark: '#3b2c22', light: '#ffffff' } })
       }
     } catch (e) {
       msg.value = '加载钉钉登录失败: ' + e.message
@@ -172,8 +178,8 @@ onMounted(async () => {
       const r = await api.feishuQrcode()
       feishuMode.value = r.mode
       if (r.mode !== 'disabled') {
-        feishuLoginUrl.value = r.login_url
-        feishuQrUrl.value = await QRCode.toDataURL(r.login_url, { margin: 1, width: 180, color: { dark: '#3b2c22', light: '#ffffff' } })
+        feishuLoginUrl.value = r.mode === 'mock' ? toAbsLoginUrl(r.login_url) : r.login_url
+        feishuQrUrl.value = await QRCode.toDataURL(feishuLoginUrl.value, { margin: 1, width: 180, color: { dark: '#3b2c22', light: '#ffffff' } })
       }
     } catch (e) {
       msg.value = '加载飞书登录失败: ' + e.message
